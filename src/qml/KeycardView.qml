@@ -32,6 +32,9 @@ Item {
     readonly property var card: keycards.length > 0 ? keycards[0] : null
     readonly property string reader: card ? card.reader : ""
     readonly property bool needsPairing: card !== null && card.secureChannel === 1 && !card.paired
+    // 4.0 cards Keycard didn't sign: refused ones, and those the person chose to trust.
+    readonly property var unsigned: cards.filter(function (c) { return c.untrusted !== undefined })
+    readonly property var trustedCards: cards.filter(function (c) { return c.trustedByPerson === true })
     readonly property var accounts: ready ? j(backend.accountsJson, "[]") : []
     readonly property var exporting: ready ? j(backend.exportJson, "{}") : ({})
     readonly property bool working: exporting.state === "working"
@@ -49,8 +52,12 @@ Item {
         if (c.secureChannel === 1) s += c.paired ? ", paired" : ", not paired"
         if (c.pinRetries !== undefined)
             s += ", PIN: " + c.pinRetries + (c.pinRetries === 1 ? " try left" : " tries left")
+        if (c.trustedByPerson) s += ", not certified by Keycard: you trusted it"
         return s
     }
+
+    // An identity key in groups of eight, to compare with the one the card was given.
+    function grouped(hex) { return (hex || "").replace(/(.{8})/g, "$1 ").trim() }
 
     function exportLine() {
         if (root.working) return "Reading the card's public keys…"
@@ -104,6 +111,86 @@ Item {
                     wrapMode: Text.WordWrap
                     textFormat: Text.PlainText
                     text: root.cardLine(modelData)
+                }
+            }
+
+            // ── a card Keycard didn't sign ───────────────────────────────────────
+            Rectangle {
+                objectName: "untrustedPanel"
+                visible: root.unsigned.length > 0
+                Layout.fillWidth: true
+                Layout.preferredHeight: untrustedColumn.implicitHeight + 2 * Theme.spacing.medium
+                color: "transparent"
+                border.color: Theme.palette.error
+                border.width: 2
+                radius: 6
+                ColumnLayout {
+                    id: untrustedColumn
+                    x: Theme.spacing.medium
+                    y: Theme.spacing.medium
+                    width: parent.width - 2 * Theme.spacing.medium
+                    spacing: Theme.spacing.small
+                    LogosText {
+                        text: "This card is not certified by Keycard"
+                        font.bold: true
+                        color: Theme.palette.error
+                    }
+                    LogosText {
+                        objectName: "untrustedWarning"
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 1
+                        wrapMode: Text.WordWrap
+                        text: "Keycard didn't sign this card's identity. It may be a card someone loaded "
+                              + "the Keycard software onto, or a counterfeit made to look like a Keycard. "
+                              + "A counterfeit could keep your PIN or your keys and send them to whoever "
+                              + "made it. Trust it only if you put the Keycard applet on this card yourself, "
+                              + "and its identity below is the one you gave it."
+                    }
+                    LogosText {
+                        objectName: "untrustedIdentity"
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 1
+                        wrapMode: Text.WrapAnywhere
+                        textFormat: Text.PlainText
+                        font.family: "monospace"
+                        text: root.unsigned.length > 0
+                              ? "Its identity: " + root.grouped(root.unsigned[0].untrusted) : ""
+                    }
+                    LogosCheckbox {
+                        id: ownCard
+                        objectName: "trustOwnCard"
+                        text: "I put the Keycard applet on this card myself"
+                    }
+                    LogosButton {
+                        objectName: "trustButton"
+                        text: "Trust this card"
+                        enabled: root.ready && ownCard.checked && root.unsigned.length > 0
+                        onClicked: logos.watch(root.backend.trustCard(root.unsigned[0].reader,
+                                                                      root.unsigned[0].untrusted),
+                                               function (trusted) { ownCard.checked = false })
+                    }
+                }
+            }
+            Repeater {
+                id: trustedRepeater
+                objectName: "trustedRepeater"
+                model: root.trustedCards
+                delegate: RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.spacing.small
+                    LogosText {
+                        objectName: "trustedNote_" + index
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 1
+                        wrapMode: Text.WordWrap
+                        color: Theme.palette.error
+                        text: "You trusted this card though Keycard didn't sign it."
+                    }
+                    LogosButton {
+                        objectName: "forgetCard_" + index
+                        text: "Stop trusting"
+                        onClicked: logos.watch(root.backend.forgetCard(modelData.identity), function (gone) {})
+                    }
                 }
             }
 

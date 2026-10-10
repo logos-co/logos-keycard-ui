@@ -21,6 +21,8 @@ public:
     bool pair(QString reader, QString pairingPassword) override;
     bool changePin(QString reader, QString pin, QString newPin) override;
     bool unblockPin(QString reader, QString puk, QString newPin) override;
+    bool trustCard(QString reader, QString identity) override;
+    bool forgetCard(QString identity) override;
 
 protected:
     void onContextReady() override;

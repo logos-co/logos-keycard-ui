@@ -5,7 +5,9 @@ class KeycardUi
     PROP(QString statusText="Starting" READONLY)
     PROP(QString lastError="" READONLY)
 
-    // `[{ reader, version?, initialized?, keyUid?, secureChannel?, pinRetries?, taproot?, paired, error? }]`.
+    // `[{ reader, version?, initialized?, keyUid?, secureChannel?, pinRetries?, taproot?, identity?,
+    // trustedByPerson?, paired, error?, untrusted? }]`; `untrusted` is the identity key of a 4.0 card
+    // refused because Keycard didn't sign it.
     PROP(QString cardsJson="[]" READONLY)
     // The accounts offered to apps, public material only.
     PROP(QString accountsJson="[]" READONLY)
@@ -23,4 +25,8 @@ class KeycardUi
     SLOT(bool pair(QString reader, QString pairingPassword))
     SLOT(bool changePin(QString reader, QString pin, QString newPin))
     SLOT(bool unblockPin(QString reader, QString puk, QString newPin))
+    // A 4.0 card Keycard didn't sign: trust it by its identity, once the person has confirmed they
+    // loaded the applet themselves, or stop trusting it.
+    SLOT(bool trustCard(QString reader, QString identity))
+    SLOT(bool forgetCard(QString identity))
 }
