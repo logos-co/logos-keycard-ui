@@ -1,0 +1,136 @@
+name: CI
+
+# What this repo can assert without a Keycard: the flake builds and packages, and the view resolves
+# its imports and constructs. The design system is checked out beside the repo for its QML.
+
+on:
+  pull_request:
+    branches: [master, main]
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: nix build
+    environment: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && 'public-cache' || '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      # At the default path, unlike the jobs below: the sibling layout exists
+      # only so assert_ui.py can find the design system, which the flake -- not
+      # declaring it as an input -- has no use for.
+      - uses: actions/checkout@v4
+
+      - name: Install Nix and set up the shared cache
+        uses: logos-co/setup-nix-cache-action@v1
+        with:
+          attic-token-ci: ${{ secrets.ATTIC_TOKEN_CI }}
+          attic-token-public: ${{ secrets.ATTIC_TOKEN_PUBLIC }}
+          # Keep READING the old Cachix while the Attic caches fill up. The
+          # rust crate derivations this build needs are in Cachix and in no
+          # other cache -- so dropping it outright did not just cost cache
+          # hits, it turned "substitute a prebuilt path" into "build it from
+          # source", which fails. Credential-free: the cache is public, and
+          # nothing publishes here any more. Remove once Attic has the paths.
+          extra-nix-config: |
+            extra-substituters = https://logos-co.cachix.org
+            extra-trusted-public-keys = logos-co.cachix.org-1:12K8609ho1pCt0erUQrOrs/KmOuhWq/EhVwhzQRb35E=
+
+      - name: Build plugin and package
+        run: nix build -L .#lgx
+
+  qml:
+    environment: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && 'public-cache' || '' }}
+    name: qmllint + load
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: logos-keycard-ui
+
+      - uses: actions/checkout@v4
+        with:
+          repository: logos-co/logos-design-system
+          path: logos-design-system
+
+      - name: Install Nix and set up the shared cache
+        uses: logos-co/setup-nix-cache-action@v1
+        with:
+          attic-token-ci: ${{ secrets.ATTIC_TOKEN_CI }}
+          attic-token-public: ${{ secrets.ATTIC_TOKEN_PUBLIC }}
+          # Keep READING the old Cachix while the Attic caches fill up. The
+          # rust crate derivations this build needs are in Cachix and in no
+          # other cache -- so dropping it outright did not just cost cache
+          # hits, it turned "substitute a prebuilt path" into "build it from
+          # source", which fails. Credential-free: the cache is public, and
+          # nothing publishes here any more. Remove once Attic has the paths.
+          extra-nix-config: |
+            extra-substituters = https://logos-co.cachix.org
+            extra-trusted-public-keys = logos-co.cachix.org-1:12K8609ho1pCt0erUQrOrs/KmOuhWq/EhVwhzQRb35E=
+
+      - name: Gate A — static (imports, type and property names)
+        working-directory: logos-keycard-ui
+        # `-W 0` fails on the first WARNING; the Info-level unused-import notes
+        # this tree carries are below that line and stay notes. `--unqualified`
+        # is off because `logos` is injected by the host, so every view here
+        # references an identifier no static pass can resolve.
+        run: |
+          nix shell nixpkgs#qt6.qtdeclarative -c bash -c '
+            QTQML=$(dirname $(dirname $(readlink -f $(command -v qmllint))))/lib/qt-6/qml
+            qmllint -I "$QTQML" -I ../logos-design-system/src/qml \
+                    -W 0 --unqualified disable src/qml/*.qml'
+
+      - name: Gate B — construct the view for real
+        working-directory: logos-keycard-ui
+        run: |
+          nix shell nixpkgs#qt6.qtdeclarative nixpkgs#qt6.qtsvg -c bash -c '
+            QTQML=$(dirname $(dirname $(readlink -f $(command -v qml))))/lib/qt-6/qml
+            # Basic is load-bearing: under a platform style the design system'"'"'s
+            # own contentItem overrides are REJECTED, which reads as a bug in
+            # this view. Both hosts force it; a bare `qml` does not.
+            # QT_LOGGING_TO_CONSOLE is load-bearing, not tidiness: nixpkgs
+            # builds Qt with -DQT_FEATURE_journald=ON, and Qt then sends every
+            # message to journald whenever stderr is not a tty — which on a
+            # runner it never is. The first green run of this gate wrote an
+            # EMPTY qml.log, so all three greps below matched nothing and
+            # passed on an absence rather than on a clean load.
+            QT_LOGGING_TO_CONSOLE=1 \
+            QT_QUICK_CONTROLS_STYLE=Basic QT_QPA_PLATFORM=offscreen \
+              timeout 60 qml -I "$QTQML" -I ../logos-design-system/src/qml \
+              src/qml/KeycardView.qml > /tmp/qml.log 2>&1
+            status=$?
+            cat /tmp/qml.log
+            # The view cannot load without saying so: `logos` is absent here and
+            # its ReferenceError is unavoidable. An empty log means the messages
+            # went somewhere else again, and every check below is then vacuous.
+            if ! grep -q "logos is not defined" /tmp/qml.log; then
+              echo "::error::no Qt output reached stderr — the checks below prove nothing"
+              exit 1
+            fi
+            # 124 IS THE PASS. The view is an Item, not a Window, so a healthy
+            # load runs the event loop until timeout kills it; qml exits 2 for a
+            # bad import and for an unknown property, and only reaches 124 when
+            # every component constructed.
+            if [ $status -ne 124 ]; then
+              echo "::error::qml exited $status (expected 124 = loaded and still running)"
+              exit 1
+            fi
+            # `invalid override`: a function named like a base signal, such as reset() on a Dialog, is dropped.
+            if grep -qE "does not support customization|Cannot assign|was not found|invalid override" /tmp/qml.log; then
+              echo "::error::QML component errors above"; exit 1
+            fi
+            # `logos` is the host-injected global and is absent by construction
+            # here, so its ReferenceError is the one expected line. Any OTHER
+            # name that fails to resolve at load is a typo the view would carry
+            # into the app, where it costs a whole panel and one qWarning.
+            if grep "ReferenceError" /tmp/qml.log | grep -v "logos is not defined"; then
+              echo "::error::unexpected ReferenceError above"; exit 1
+            fi'

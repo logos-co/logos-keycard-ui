@@ -1,0 +1,157 @@
+name: "Offering a Keycard's accounts, in its app"
+output: keycard-ui-e2e.md
+release: ""
+
+# The host is Basecamp in standalone mode: `--module` opens this app, and `--modules-dir` holds
+# the module it depends on. The card is the Keycard applet itself, in jCardSim.
+
+intro: |
+  A Keycard keeps its keys on the card. Its app, `keycard_ui`, shows the cards in the readers and
+  lets the person choose which accounts Logos apps may use, opening the card with its PIN; only
+  public keys are kept. It also pairs a 3.x card, changes the PIN and unblocks it with the PUK.
+
+  This doc-test drives the app headless in Basecamp's standalone mode, against `keycard-simulator`:
+  the Keycard applet 4.0, built from its source, in jCardSim, set up with PIN 123456 and the
+  "abandon … about" test phrase's key.
+
+what_you_build: "The Keycard's app and its module in Basecamp's standalone mode, with a simulated Keycard."
+
+what_you_learn:
+  - What the app shows of a card before its PIN
+  - How accounts are offered with the PIN, a wrong PIN is refused, and an account is taken back
+
+prerequisites:
+  - "**Nix** with flakes enabled."
+  - "**A Linux or macOS machine.** The app runs headless, and no card or reader is needed."
+
+sections:
+  - title: "Build the pieces"
+    step: true
+    steps:
+      - title: "The host and the test driver"
+        run: |
+          set -eu
+          nix build 'github:logos-co/logos-basecamp#app-standalone' --no-write-lock-file -o result-basecamp
+          nix build 'github:logos-co/logos-qt-mcp' --no-write-lock-file -o result-mcp
+      - title: "The Keycard module and its simulator"
+        run: |
+          set -eu
+          nix build 'github:logos-co/logos-keycard-module/bb411282947c74a89b18e1d4ba65196a0c8216d4#install' --no-write-lock-file -o result-module
+          nix build 'github:logos-co/logos-keycard-module/bb411282947c74a89b18e1d4ba65196a0c8216d4#simulator' --no-write-lock-file -o result-simulator
+        code_block: |
+          nix build 'github:logos-co/logos-keycard-module#install' -o result-module
+          nix build 'github:logos-co/logos-keycard-module#simulator' -o result-simulator
+      - title: "The app"
+        run: "nix build 'github:logos-co/logos-keycard-ui{release}#install' --no-write-lock-file -o result-ui"
+        code_block: "nix build 'github:logos-co/logos-keycard-ui#install' -o result-ui"
+      - title: "Lay out the module for the host"
+        run: |
+          set -eu
+          mkdir -p tree/modules
+          cp -rL result-module/modules/* tree/modules/
+          chmod -R u+w tree
+          ls tree/modules result-ui/plugins
+        expect_contains:
+          - "keycard_module"
+          - "keycard_ui"
+
+  - title: "A simulated Keycard"
+    step: true
+    steps:
+      - title: "Start it"
+        text: "It prints `ready` once the card is set up."
+        run: "sh -c './result-simulator/bin/keycard-simulator 47335 > card.log 2>&1 & echo $! > card.pid'; for i in $(seq 1 60); do grep -q ready card.log && break; sleep 1; done; cat card.log"
+        code_block: "keycard-simulator 47335 &        # a 4.0 card on 127.0.0.1:47335"
+        expect_contains:
+          - "ready 127.0.0.1:47335"
+
+  - title: "Offer its accounts"
+    step: true
+    text: "`KEYCARD_SIMULATOR` points the module at the simulator instead of the smart-card readers."
+    steps:
+      - title: "Offer them with the PIN, and take one back"
+        ui_test:
+          launch: "env KEYCARD_SIMULATOR=127.0.0.1:47335 QT_FORCE_STDERR_LOGGING=1 QML_INSPECTOR_PORT=3768 ./result-basecamp/bin/LogosBasecamp --module ./result-ui --modules-dir ./tree/modules --user-dir ./userdir"
+          qt_mcp: "result-mcp"
+          launch_timeout: 600
+          tests:
+            - name: "The card is in its reader, read before any PIN"
+              action: wait_for
+              texts: ["Keycard 4.0, in Keycard simulator, PIN: 3 tries left"]
+              timeout: 60000
+
+            - name: "Nothing is offered yet"
+              action: wait_for
+              texts: ["No account offered yet."]
+              timeout: 10000
+              screenshot: "keycard-ui-card.png"
+
+            - name: "A wrong PIN"
+              action: set_text
+              find_by: "objectName"
+              find_value: "offerPin"
+              value: "000000"
+
+            - name: "Offer the EVM account"
+              action: click_object
+              find_value: "offerButton"
+
+            - name: "Refused, with the tries left"
+              action: wait_for
+              texts: ["offer: wrong PIN: 2 tries left"]
+              timeout: 30000
+
+            - name: "Taproot too"
+              action: click_object
+              find_value: "offerTaproot"
+
+            - name: "The PIN"
+              action: set_text
+              find_by: "objectName"
+              find_value: "offerPin"
+              value: "123456"
+
+            - name: "Offer them"
+              action: click_object
+              find_value: "offerButton"
+
+            - name: "Offered"
+              action: wait_for
+              texts: ["Offered 2 accounts."]
+              timeout: 60000
+
+            - name: "They are listed"
+              action: wait_for
+              texts: ["Keycard EVM — 0x9858effd232b4033e47d90003d41ec34ecaeda94"]
+              timeout: 10000
+              screenshot: "keycard-ui-offered.png"
+
+            - name: "Two accounts"
+              action: expect_property
+              find_by: "objectName"
+              find_value: "accountRepeater"
+              property: "count"
+              value: 2
+              timeout: 10000
+
+            - name: "Take the taproot one back"
+              action: click_object
+              find_value: "removeAccount_1"
+
+            - name: "One remains"
+              action: expect_property
+              find_by: "objectName"
+              find_value: "accountRepeater"
+              property: "count"
+              value: 1
+              timeout: 10000
+
+  - title: "Stop"
+    step: true
+    steps:
+      - title: "Stop the simulated Keycard"
+        run: |
+          kill $(cat card.pid) || true
+          echo stopped
+        expect_contains:
+          - "stopped"
