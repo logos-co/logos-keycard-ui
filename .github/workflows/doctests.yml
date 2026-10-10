@@ -1,0 +1,73 @@
+name: keycard-ui Doc-Tests
+
+# The end-to-end spec: the app offers accounts from the Keycard applet itself in jCardSim, with
+# its PIN, and takes one back, driven over the QML inspector in Basecamp's standalone mode. The
+# report is uploaded as an artifact.
+
+on:
+  pull_request:
+    branches: [master, main]
+  push:
+    branches: [master, main]
+
+concurrency:
+  group: doctests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  doctests:
+    name: keycard-ui doc-tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    environment: ${{ github.ref == 'refs/heads/main' && 'public-cache' || '' }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix and set up the shared cache
+        uses: logos-co/setup-nix-cache-action@v1
+        with:
+          attic-token-ci: ${{ secrets.ATTIC_TOKEN_CI }}
+          attic-token-public: ${{ secrets.ATTIC_TOKEN_PUBLIC }}
+          extra-nix-config: |
+            extra-substituters = https://logos-co.cachix.org
+            extra-trusted-public-keys = logos-co.cachix.org-1:12K8609ho1pCt0erUQrOrs/KmOuhWq/EhVwhzQRb35E=
+
+      # The commit under test, so the spec's `{release}` resolves to this PR's code. Fork PRs
+      # blank it, and the run falls back to main.
+      - name: Resolve commit under test
+        id: commit
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ] && \
+             [ "${{ github.event.pull_request.head.repo.fork }}" = "true" ]; then
+            echo "sha=" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${{ github.event.pull_request.head.sha || github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install GL libraries (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libopengl0 libglx0 libgl1 libegl1
+
+      - name: Run doc-tests
+        run: |
+          nix run github:logos-co/logos-doctest -- run \
+            doctests/keycard-ui-e2e.test.yaml \
+            --verbose \
+            --continue-on-fail \
+            --release-for logos-keycard-ui=${{ steps.commit.outputs.sha }} \
+            --report "${{ runner.temp }}/doctest-report.html"
+
+      - name: Upload execution report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: doctest-report-${{ matrix.os }}
+          path: ${{ runner.temp }}/doctest-report.html
+          if-no-files-found: warn

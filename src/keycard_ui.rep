@@ -1,0 +1,26 @@
+// QtRO view contract for the Keycard's app. A PIN, PUK or pairing password crosses it on its way
+// to the card through keycard_module, and neither side keeps it. The keys stay on the card.
+class KeycardUi
+{
+    PROP(QString statusText="Starting" READONLY)
+    PROP(QString lastError="" READONLY)
+
+    // `[{ reader, version?, initialized?, keyUid?, secureChannel?, pinRetries?, taproot?, paired, error? }]`.
+    PROP(QString cardsJson="[]" READONLY)
+    // The accounts offered to apps, public material only.
+    PROP(QString accountsJson="[]" READONLY)
+    // The export under way or last finished: `{ state, accounts?, error? }`, `{}` before any.
+    PROP(QString exportJson="{}" READONLY)
+    // What the last pairing or PIN change did, `""` before any.
+    PROP(QString noticeText="" READONLY)
+
+    SLOT(void refresh())
+    // Export these accounts from the card in `reader` ("" for the only one), opened by its PIN:
+    // `familiesJson` lists evm, bitcoin, bitcoin_taproot; `chain` is main or test.
+    SLOT(bool offer(QString reader, QString familiesJson, QString chain, int account, QString label, QString pin))
+    SLOT(bool removeAccount(QString id))
+    // A 3.x card only: pair it once, with its pairing password.
+    SLOT(bool pair(QString reader, QString pairingPassword))
+    SLOT(bool changePin(QString reader, QString pin, QString newPin))
+    SLOT(bool unblockPin(QString reader, QString puk, QString newPin))
+}
