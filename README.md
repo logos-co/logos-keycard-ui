@@ -12,12 +12,17 @@ app and the module to the card, and neither keeps them.
 A Keycard has no screen. When it signs, the person relies on what the signer app shows, so the app
 says so.
 
+A 4.0 card whose identity Keycard didn't sign is refused. The app says why, shows the card's identity
+key, and warns that a counterfeit could keep the PIN or the keys. The person may trust that one card
+once they confirm they loaded the applet onto it themselves, and stop trusting it later.
+
 ```sh
 nix build .#lgx
 ```
 
 The end-to-end doctest (`doctests/keycard-ui-e2e.test.yaml`) runs the app in Basecamp's standalone
 mode against the Keycard applet itself, in jCardSim. It offers accounts with the PIN after a wrong
-one, then takes one back.
+one, then takes one back. It then swaps in a card another CA signed, trusts it, offers its EVM
+account, and stops trusting it.
 
 Licensed under MIT or Apache-2.0.

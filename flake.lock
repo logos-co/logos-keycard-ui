@@ -81,17 +81,17 @@
         ]
       },
       "locked": {
-        "lastModified": 1791630546,
-        "narHash": "sha256-wzuCM5wY+pDyaAsfhWDJffl6P1fRwuMldOxhgAmI+pI=",
+        "lastModified": 1791667880,
+        "narHash": "sha256-TncNW2aOxVSUN91gGv4O4fKD3YSCqriTxmiD/ICMn/k=",
         "owner": "logos-co",
         "repo": "logos-keycard-module",
-        "rev": "bb411282947c74a89b18e1d4ba65196a0c8216d4",
+        "rev": "ea25bdf61f37a70eddaedacf67e41c85b2e5329f",
         "type": "github"
       },
       "original": {
         "owner": "logos-co",
         "repo": "logos-keycard-module",
-        "rev": "bb411282947c74a89b18e1d4ba65196a0c8216d4",
+        "rev": "ea25bdf61f37a70eddaedacf67e41c85b2e5329f",
         "type": "github"
       }
     },

@@ -190,3 +190,29 @@ bool KeycardUiBackend::unblockPin(QString reader, QString puk, QString newPin)
     refresh();
     return unblocked;
 }
+
+bool KeycardUiBackend::trustCard(QString reader, QString identity)
+{
+    setLastError(QString());
+    QJsonObject p;
+    if (!reader.isEmpty())
+        p.insert(QStringLiteral("reader"), reader);
+    p.insert(QStringLiteral("identity"), identity);
+    const bool trusted =
+        ok(parseObject(modules().keycard_module.trust_card(text(p))), QStringLiteral("trust"));
+    if (trusted)
+        setNoticeText(QStringLiteral("Trusted: this card is used though Keycard didn't sign it."));
+    refresh();
+    return trusted;
+}
+
+bool KeycardUiBackend::forgetCard(QString identity)
+{
+    setLastError(QString());
+    const bool forgot =
+        ok(parseObject(modules().keycard_module.forget_card(identity)), QStringLiteral("forget"));
+    if (forgot)
+        setNoticeText(QStringLiteral("No longer trusted: this card is refused again."));
+    refresh();
+    return forgot;
+}
