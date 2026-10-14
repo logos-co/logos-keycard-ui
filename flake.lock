@@ -81,17 +81,38 @@
         ]
       },
       "locked": {
-        "lastModified": 1791667880,
-        "narHash": "sha256-TncNW2aOxVSUN91gGv4O4fKD3YSCqriTxmiD/ICMn/k=",
+        "lastModified": 1792019215,
+        "narHash": "sha256-NSsF+OF7AcvL0auRZZFVzBBZeWxGnoMm/BxxlnJB6KY=",
         "owner": "logos-co",
         "repo": "logos-keycard-module",
-        "rev": "ea25bdf61f37a70eddaedacf67e41c85b2e5329f",
+        "rev": "5532778174c021e6f52a449920530abe5a4186de",
         "type": "github"
       },
       "original": {
         "owner": "logos-co",
         "repo": "logos-keycard-module",
-        "rev": "ea25bdf61f37a70eddaedacf67e41c85b2e5329f",
+        "rev": "5532778174c021e6f52a449920530abe5a4186de",
+        "type": "github"
+      }
+    },
+    "keycard_shell_module": {
+      "inputs": {
+        "logos-module-builder": [
+          "logos-module-builder"
+        ]
+      },
+      "locked": {
+        "lastModified": 1792019216,
+        "narHash": "sha256-4Dfp2Y/0vJrZwcchOhGghX7zX7JzYOKbPYZ5GzLlm70=",
+        "owner": "logos-co",
+        "repo": "logos-keycard-shell-module",
+        "rev": "7d3e803d23755e080b87f2880e175fd035aa7ccf",
+        "type": "github"
+      },
+      "original": {
+        "owner": "logos-co",
+        "repo": "logos-keycard-shell-module",
+        "rev": "7d3e803d23755e080b87f2880e175fd035aa7ccf",
         "type": "github"
       }
     },
@@ -9622,6 +9643,7 @@
     "root": {
       "inputs": {
         "keycard_module": "keycard_module",
+        "keycard_shell_module": "keycard_shell_module",
         "logos-module-builder": "logos-module-builder"
       }
     },
