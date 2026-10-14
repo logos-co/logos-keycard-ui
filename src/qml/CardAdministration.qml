@@ -18,7 +18,6 @@ LogosDialog {
     property var selected: null
     property string preferredCard: ""
     property bool busy: false
-    property string message: ""
     property bool failed: false
     property var generated: []
     readonly property bool changed: !!selected && !usableCards.some(function(c) { return c.reader === selected.reader && c.adminId === selected.adminId && (c.keyUid || "") === (selected.keyUid || "") })

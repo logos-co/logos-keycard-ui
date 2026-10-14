@@ -167,7 +167,6 @@ Item {
         closePolicy: root.working || submitting ? Popup.NoAutoClose : Popup.CloseOnEscape
         property bool submitting: false
         property bool exportActive: false
-        property string message: ""
         onOpened: { message = ""; submitting = false; exportActive = false; coin.currentIndex = 0; script.currentIndex = 0; network.currentIndex = 0; labelField.text = ""; pinField.text = ""; advanced.checked = false; root.nextIndex() }
         onClosed: { pinField.text = ""; pairingField.text = "" }
         Connections {
