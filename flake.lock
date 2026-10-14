@@ -81,17 +81,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1792019215,
+        "lastModified": 1792020874,
         "narHash": "sha256-NSsF+OF7AcvL0auRZZFVzBBZeWxGnoMm/BxxlnJB6KY=",
         "owner": "logos-co",
         "repo": "logos-keycard-module",
-        "rev": "5532778174c021e6f52a449920530abe5a4186de",
+        "rev": "e3625fa45efda4a91188229bf3ce377243dcdc97",
         "type": "github"
       },
       "original": {
         "owner": "logos-co",
         "repo": "logos-keycard-module",
-        "rev": "5532778174c021e6f52a449920530abe5a4186de",
         "type": "github"
       }
     },
@@ -102,17 +101,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1792019216,
+        "lastModified": 1792020908,
         "narHash": "sha256-4Dfp2Y/0vJrZwcchOhGghX7zX7JzYOKbPYZ5GzLlm70=",
         "owner": "logos-co",
         "repo": "logos-keycard-shell-module",
-        "rev": "7d3e803d23755e080b87f2880e175fd035aa7ccf",
+        "rev": "aabc5bdc2b1e959d0fd9aedef0b6431d73a2ee6f",
         "type": "github"
       },
       "original": {
         "owner": "logos-co",
         "repo": "logos-keycard-shell-module",
-        "rev": "7d3e803d23755e080b87f2880e175fd035aa7ccf",
         "type": "github"
       }
     },

@@ -3,14 +3,12 @@
 
   inputs = {
     logos-module-builder.url = "github:logos-co/logos-module-builder";
-    # Pinned to logos-keycard-shell-module#3's head until it merges; then follow main.
     keycard_shell_module = {
-      url = "github:logos-co/logos-keycard-shell-module/7d3e803d23755e080b87f2880e175fd035aa7ccf";
+      url = "github:logos-co/logos-keycard-shell-module";
       inputs.logos-module-builder.follows = "logos-module-builder";
     };
-    # Pinned to logos-keycard-module#3's head until it merges; then follow main.
     keycard_module = {
-      url = "github:logos-co/logos-keycard-module/5532778174c021e6f52a449920530abe5a4186de";
+      url = "github:logos-co/logos-keycard-module";
       inputs.logos-module-builder.follows = "logos-module-builder";
     };
   };
