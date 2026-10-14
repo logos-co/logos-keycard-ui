@@ -115,4 +115,5 @@ sections:
               find_by: "objectName"
               find_value: "offerAccount"
               property: "text"
-              expected: "1"
+              value: "1"
+              timeout: 10000
