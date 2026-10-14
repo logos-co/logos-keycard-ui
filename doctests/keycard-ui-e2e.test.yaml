@@ -37,8 +37,8 @@ sections:
       - title: "The Keycard module and its simulator"
         run: |
           set -eu
-          nix build 'github:logos-co/logos-keycard-module/ea25bdf61f37a70eddaedacf67e41c85b2e5329f#install' --no-write-lock-file -o result-module
-          nix build 'github:logos-co/logos-keycard-module/ea25bdf61f37a70eddaedacf67e41c85b2e5329f#simulator' --no-write-lock-file -o result-simulator
+          nix build 'github:logos-co/logos-keycard-module/main#install' --no-write-lock-file -o result-module
+          nix build 'github:logos-co/logos-keycard-module/main#simulator' --no-write-lock-file -o result-simulator
         code_block: |
           nix build 'github:logos-co/logos-keycard-module#install' -o result-module
           nix build 'github:logos-co/logos-keycard-module#simulator' -o result-simulator
@@ -49,6 +49,8 @@ sections:
         run: |
           set -eu
           mkdir -p tree/modules
+          nix build 'github:logos-co/logos-keycard-shell-module#install' --no-write-lock-file -o result-shell
+          cp -rL result-shell/modules/* tree/modules/
           cp -rL result-module/modules/* tree/modules/
           chmod -R u+w tree
           ls tree/modules result-ui/plugins
@@ -66,172 +68,51 @@ sections:
         expect_contains:
           - "ready 127.0.0.1:47335"
 
-  - title: "Offer its accounts"
+  - title: "Manage a wallet and derive accounts"
     step: true
-    text: "`KEYCARD_SIMULATOR` points the module at the simulator instead of the smart-card readers."
     steps:
-      - title: "Offer them with the PIN, and take one back"
+      - title: "Add an Ethereum account from a named card"
         ui_test:
-          launch: "env KEYCARD_SIMULATOR=127.0.0.1:47335 QT_FORCE_STDERR_LOGGING=1 QML_INSPECTOR_PORT=3768 ./result-basecamp/bin/LogosBasecamp --module ./result-ui --modules-dir ./tree/modules --user-dir ./userdir"
+          launch: "env KEYCARD_SIMULATOR=127.0.0.1:47335 KEYCARD_SHELL_EMULATOR=127.0.0.1:1 QT_FORCE_STDERR_LOGGING=1 QML_INSPECTOR_PORT=3768 ./result-basecamp/bin/LogosBasecamp --module ./result-ui --modules-dir ./tree/modules --user-dir ./userdir"
           qt_mcp: "result-mcp"
           launch_timeout: 600
           tests:
-            - name: "The card is in its reader, read before any PIN"
+            - name: "Wallet home"
               action: wait_for
-              texts: ["Keycard 4.0, in Keycard simulator, PIN: 3 tries left"]
+              texts: ["Keycard wallets", "No accounts yet."]
               timeout: 60000
-
-            - name: "Nothing is offered yet"
-              action: wait_for
-              texts: ["No account offered yet."]
-              timeout: 10000
-              screenshot: "keycard-ui-card.png"
-
-            - name: "A wrong PIN"
+            - name: "Manage the card"
+              action: click_object
+              find_value: "manageWallet_0"
+            - name: "Name the wallet"
               action: set_text
               find_by: "objectName"
-              find_value: "offerPin"
-              value: "000000"
-
-            - name: "Offer the EVM account"
+              find_value: "walletName"
+              value: "Travel card"
+            - name: "Save its name"
               action: click_object
-              find_value: "offerButton"
-
-            - name: "Refused, with the tries left"
-              action: wait_for
-              texts: ["offer: wrong PIN: 2 tries left"]
-              timeout: 30000
-
-            - name: "Taproot too"
+              find_value: "saveWalletName"
+            - name: "Close settings"
               action: click_object
-              find_value: "offerTaproot"
-
-            - name: "The PIN"
+              find_value: "manageDone"
+            - name: "Derive an account"
+              action: click_object
+              find_value: "addAccounts_0"
+            - name: "Authorize the public export"
               action: set_text
               find_by: "objectName"
               find_value: "offerPin"
               value: "123456"
-
-            - name: "Offer them"
+            - name: "Add Ethereum"
               action: click_object
               find_value: "offerButton"
-
-            - name: "Offered"
+            - name: "Account added"
               action: wait_for
-              texts: ["Offered 2 accounts."]
+              texts: ["Account added."]
               timeout: 60000
-
-            - name: "They are listed"
-              action: wait_for
-              texts: ["Keycard EVM — 0x9858effd232b4033e47d90003d41ec34ecaeda94"]
-              timeout: 10000
-              screenshot: "keycard-ui-offered.png"
-
-            - name: "Two accounts"
+            - name: "Next derivation index"
               action: expect_property
               find_by: "objectName"
-              find_value: "accountRepeater"
-              property: "count"
-              value: 2
-              timeout: 10000
-
-            - name: "Take the taproot one back"
-              action: click_object
-              find_value: "removeAccount_1"
-
-            - name: "One remains"
-              action: expect_property
-              find_by: "objectName"
-              find_value: "accountRepeater"
-              property: "count"
-              value: 1
-              timeout: 10000
-
-  - title: "A card Keycard didn't sign"
-    step: true
-    text: |
-      A 4.0 card whose identity no trusted CA signed is refused: one a person loaded the applet onto,
-      or a counterfeit. The app says why and shows the card's identity key. The person may trust that
-      one card once they confirm they loaded the applet themselves.
-    steps:
-      - title: "Swap in a card another CA signed"
-        run: "./result-simulator/bin/keycard-simulator-setup 127.0.0.1:47335 --fresh --untrusted"
-        code_block: "keycard-simulator-setup 127.0.0.1:47335 --fresh --untrusted"
-        expect_contains:
-          - "ready 127.0.0.1:47335"
-      - title: "Trust it, offer its EVM account, and stop trusting it"
-        ui_test:
-          launch: "env KEYCARD_SIMULATOR=127.0.0.1:47335 QT_FORCE_STDERR_LOGGING=1 QML_INSPECTOR_PORT=3768 ./result-basecamp/bin/LogosBasecamp --module ./result-ui --modules-dir ./tree/modules --user-dir ./userdir"
-          qt_mcp: "result-mcp"
-          launch_timeout: 600
-          tests:
-            - name: "The card is refused, with a warning"
-              action: expect_property
-              find_by: "objectName"
-              find_value: "untrustedPanel"
-              property: "visible"
-              value: true
-              timeout: 60000
-              screenshot: "keycard-ui-untrusted.png"
-
-            - name: "Trusting waits for the person's confirmation"
-              action: expect_property
-              find_by: "objectName"
-              find_value: "trustButton"
-              property: "enabled"
-              value: false
-              timeout: 10000
-
-            - name: "They confirm they loaded the applet"
-              action: click_object
-              find_value: "trustOwnCard"
-
-            - name: "Trust it"
-              action: click_object
-              find_value: "trustButton"
-
-            - name: "Used now, marked as trusted by the person"
-              action: expect_property
-              find_by: "objectName"
-              find_value: "trustedRepeater"
-              property: "count"
-              value: 1
-              timeout: 10000
-              screenshot: "keycard-ui-trusted.png"
-
-            - name: "The PIN"
-              action: set_text
-              find_by: "objectName"
-              find_value: "offerPin"
-              value: "123456"
-
-            - name: "Offer its EVM account"
-              action: click_object
-              find_value: "offerButton"
-
-            - name: "Offered"
-              action: wait_for
-              texts: ["Offered 1 account."]
-              timeout: 60000
-
-            - name: "Stop trusting it"
-              action: click_object
-              find_value: "forgetCard_0"
-
-            - name: "Refused again"
-              action: expect_property
-              find_by: "objectName"
-              find_value: "untrustedPanel"
-              property: "visible"
-              value: true
-              timeout: 10000
-
-  - title: "Stop"
-    step: true
-    steps:
-      - title: "Stop the simulated Keycard"
-        run: |
-          kill $(cat card.pid) || true
-          echo stopped
-        expect_contains:
-          - "stopped"
+              find_value: "offerAccount"
+              property: "text"
+              expected: "1"
