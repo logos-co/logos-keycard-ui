@@ -94,7 +94,7 @@ Recovery words are transient dialog state, cleared on close, card/seed change or
 loading; they are never copied into replicated backend properties. Changing credentials
 or resetting a physical card does not rename/delete the seed wallet or accounts saved
 on this computer. Operations and transport/version limits are documented in the
-[keycard module](../logos-keycard-module/README.md#physical-card-administration).
+[keycard module](https://github.com/logos-co/logos-keycard-module#physical-card-administration).
 
 Card setup uses the standard 3.x pairing password by default. Advanced options allow a custom password with confirmation. Device selectors and wallet connection summaries show only connected readers/Shells; saved wallets and accounts remain available offline.
 
