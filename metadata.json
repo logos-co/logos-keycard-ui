@@ -5,18 +5,37 @@
   "type": "ui_qml",
   "interface": "universal",
   "category": "wallet",
-  "description": "The Keycard's app: the cards in the readers, the accounts offered to Logos apps, and offering more with the card's PIN; pairing a 3.x card, changing the PIN and unblocking it with the PUK.",
+  "description": "Keycard wallets and accounts through a smart-card reader or Keycard Shell over USB.",
   "author": "Logos Core Team",
   "main": "keycard_ui_plugin",
   "icon": "src/icons/keycard.png",
   "view": "qml/KeycardView.qml",
   "dependencies": [
-    { "name": "keycard_module", "version": "~0.1.0" }
+    {
+      "name": "keycard_module",
+      "version": "~0.1.0"
+    },
+    {
+      "name": "keycard_shell_module",
+      "version": "~0.1.0"
+    }
   ],
-  "codegen": { "rep": "src/keycard_ui.rep" },
+  "codegen": {
+    "rep": "src/keycard_ui.rep"
+  },
   "nix": {
     "external_libraries": [],
-    "packages": { "build": [], "runtime": ["qt6.qtdeclarative"] },
-    "cmake": { "find_packages": [], "extra_sources": [], "extra_include_dirs": [], "extra_link_libraries": [] }
+    "packages": {
+      "build": [],
+      "runtime": [
+        "qt6.qtdeclarative"
+      ]
+    },
+    "cmake": {
+      "find_packages": [],
+      "extra_sources": [],
+      "extra_include_dirs": [],
+      "extra_link_libraries": []
+    }
   }
 }
