@@ -65,7 +65,7 @@ Item {
     function shortAddress(a) { return a ? a.slice(0,8) + "…" + a.slice(-6) : "" }
     // A wallet's accounts are sealed until the person unlocks it there.
     function unlockInSigner() {
-        logos.request("logos.unlock", ({}), function (res) { if (res.ok) root.backend.refresh() })
+        logos.request("wallets.unlock", ({}), function (res) { if (res.ok) root.backend.refresh() })
     }
     function groupName(g) {
         if (!g) return "Keycard"

@@ -12,7 +12,7 @@
   "view": "qml/KeycardView.qml",
   "uses": [
     {
-      "intent": "logos.unlock",
+      "intent": "wallets.unlock",
       "cardinality": "single"
     }
   ],

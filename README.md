@@ -35,7 +35,7 @@ use another previously identified Shell connection for the same wallet.
 
 Each wallet's accounts are sealed under a key the Signer app releases once the person unlocks
 that wallet there. Until then the wallet shows as **Locked**, with no accounts, and its **Unlock**
-raises `logos.unlock` to open the Signer app.
+raises `wallets.unlock` to open the Signer app.
 
 Unsigned applet 4.0 cards still require explicit review of their identity and the existing
 counterfeit warning before they can be trusted. A card used in a reader has no trusted display:
