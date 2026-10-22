@@ -63,6 +63,10 @@ Item {
     function cardId(c) { return c.secureChannel === 2 ? "identity:" + c.identity : "instance:" + c.instanceUid }
     function shortId(id) { var s = (id || "").split(":").pop(); return s.length > 16 ? s.slice(0,8) + "…" + s.slice(-8) : s }
     function shortAddress(a) { return a ? a.slice(0,8) + "…" + a.slice(-6) : "" }
+    // A wallet's accounts are sealed until the person unlocks it there.
+    function unlockInSigner() {
+        logos.request("logos.unlock", ({}), function (res) { if (res.ok) root.backend.refresh() })
+    }
     function groupName(g) {
         if (!g) return "Keycard"
         if (g.id.indexOf("seed:") === 0) return g.name || "Keycard wallet " + shortId(g.id)
@@ -132,7 +136,15 @@ Item {
                         }
                         LogosText { visible: (group.modelData.aliases || []).filter(function(n) { return n !== group.modelData.name }).length > 0; text: "Also named: " + (group.modelData.aliases || []).filter(function(n) { return n !== group.modelData.name }).join(" · "); textFormat: Text.PlainText; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.textSecondary }
                         LogosButton { text: "Identify wallet…"; visible: group.modelData.transport === "shell" && group.modelData.id.indexOf("seed:") !== 0; enabled: group.modelData.connected && !root.working; onClicked: { root.selectWallet(group.modelData); identifySheet.open() } }
-                        LogosText { visible: group.modelData.accounts.length === 0; text: "No accounts yet."; color: Theme.palette.textSecondary }
+                        RowLayout {
+                            visible: group.modelData.locked === true
+                            Layout.fillWidth: true
+                            LogosText { objectName: "walletLocked_" + group.index; Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText
+                                        color: Theme.palette.textSecondary
+                                        text: "Locked · its accounts show once you unlock it in the Signer app." }
+                            LogosButton { objectName: "unlockWallet_" + group.index; text: "Unlock"; enabled: root.ready; onClicked: root.unlockInSigner() }
+                        }
+                        LogosText { visible: group.modelData.accounts.length === 0 && group.modelData.locked !== true; text: "No accounts yet."; color: Theme.palette.textSecondary }
                         Repeater {
                             model: group.modelData.accounts
                             delegate: RowLayout {

@@ -58,6 +58,8 @@ QJsonArray mergeWallets(const QJsonArray &reader, const QJsonArray &shell) {
             }
             g["connections"] = connections;
             g["connected"] = g.value("connected").toBool() || source.value("connected").toBool();
+            // Its accounts are sealed until the person unlocks the wallet in the Signer app.
+            g["locked"] = g.value("locked").toBool() || source.value("locked").toBool();
             auto accounts = groups.contains(id) ? g.value("accounts").toArray() : QJsonArray{};
             for (const auto &v : source.value("accounts").toArray()) {
                 auto a = v.toObject();

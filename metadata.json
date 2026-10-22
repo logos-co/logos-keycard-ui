@@ -10,6 +10,12 @@
   "main": "keycard_ui_plugin",
   "icon": "src/icons/keycard.png",
   "view": "qml/KeycardView.qml",
+  "uses": [
+    {
+      "intent": "logos.unlock",
+      "cardinality": "single"
+    }
+  ],
   "dependencies": [
     {
       "name": "keycard_module",
