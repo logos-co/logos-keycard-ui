@@ -3,6 +3,7 @@ import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import Logos.Controls
 import Logos.Theme
+import "accountkit" as Accounts
 
 LogosDialog {
     id: admin
@@ -44,6 +45,20 @@ LogosDialog {
     readonly property bool needsPhrase: ["load_phrase","verify_phrase"].indexOf(action) >= 0
     readonly property bool loadingGenerated: action === "generate_phrase" && generated.length > 0
     readonly property string confirmation: action === "factory_reset" ? "RESET" : action === "remove_key" ? "ERASE" : action === "generate_key" ? "NO BACKUP" : action === "write_data" ? "WRITE" : ""
+    // Putting a wallet onto the card, which a card that holds keys already refuses.
+    readonly property bool loadsKeys: ["load_phrase","generate_key","generate_phrase"].indexOf(action) >= 0
+    readonly property bool holdsKeys: !!(selected && selected.keyUid)
+    // Why the button below can't be pressed yet, in words: it is often a field out of view.
+    readonly property string blocked: {
+        if (!selected || changed || busy || !action) return ""
+        if (loadsKeys && holdsKeys) return "This card already holds keys. Erase them first (Erase keys from card) to put another wallet on it."
+        if (needsPin && pin.text.length !== 6) return loadingGenerated ? "Type the card's PIN again to load the phrase." : "Type the card's PIN."
+        if (needsNewPin && (newPin.text.length !== 6 || newPin.text !== repeatPin.text)) return "Type the new PIN twice."
+        if (needsPhrase && phrase.text.trim().length === 0) return "Type the recovery phrase."
+        if ((action === "load_phrase" || loadingGenerated) && !backedUp.checked) return "Confirm you have backed up the phrase."
+        if (confirmation && confirm.text !== confirmation) return "Type " + confirmation + " to confirm."
+        return ""
+    }
     function clearSecrets() { advanced.checked = false; customPairing.checked = false; pin.text = ""; newPin.text = ""; repeatPin.text = ""; puk.text = ""; repeatPuk.text = ""; pairing.text = ""; repeatPairing.text = ""; alternate.text = ""; repeatAlternate.text = ""; phrase.text = ""; passphrase.text = ""; generated = []; backedUp.checked = false; confirm.text = "" }
     function selectCard(index) { clearSecrets(); selected = index >= 0 ? usableCards[index] : null; operation.currentIndex = 0; message = "" }
     onOpened: { busy = false; picker.currentIndex = Math.max(0, usableCards.findIndex(function(c) { return c.adminId === admin.preferredCard })); selectCard(usableCards.length ? picker.currentIndex : -1); preferredCard = "" }
@@ -101,7 +116,7 @@ LogosDialog {
                 enabled: !admin.busy && !admin.changed && !!admin.selected
                 LogosText { visible: admin.action === "factory_reset" || admin.action === "remove_key"; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.error; text: admin.action === "factory_reset" ? "Factory reset erases this card's keys, PIN, PUK, pairings and card metadata. It requires no PIN. You need a recovery backup to restore access to funds. Saved wallet names and accounts on this computer are retained." : "Erase the recovery keys from this card. You need a recovery backup to restore access to funds. PIN, PUK and pairings remain. Saved accounts on this computer are retained." }
                 LogosText { visible: admin.action === "generate_key"; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.error; text: "Generates keys inside an empty card with NO recovery phrase. If this card is lost or reset, its wallet cannot be recovered. Use Create recovery phrase for a recoverable wallet." }
-                LogosText { visible: ["load_phrase","generate_key"].indexOf(admin.action) >= 0 && !!(admin.selected && admin.selected.keyUid); Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "This card already holds keys. Erase keys explicitly before loading a different wallet."; color: Theme.palette.error }
+                LogosText { visible: admin.loadsKeys && admin.holdsKeys; Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "This card already holds keys. Erase keys explicitly before loading a different wallet."; color: Theme.palette.error }
                 LogosTextField { id: pin; objectName: "adminPin"; visible: admin.needsPin; Layout.fillWidth: true; placeholderText: "Current PIN (6 digits)"; echoMode: TextInput.Password; validator: RegularExpressionValidator { regularExpression: /[0-9]{0,6}/ } }
                 LogosTextField { id: newPin; objectName: "adminNewPin"; visible: admin.needsNewPin; Layout.fillWidth: true; placeholderText: "New PIN (6 digits)"; echoMode: TextInput.Password; validator: RegularExpressionValidator { regularExpression: /[0-9]{0,6}/ } }
                 LogosTextField { id: repeatPin; objectName: "adminRepeatPin"; visible: admin.needsNewPin; Layout.fillWidth: true; placeholderText: "Repeat new PIN"; echoMode: TextInput.Password }
@@ -139,7 +154,7 @@ LogosDialog {
                 LogosText { visible: slot.visible; Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Read Card status to find this app's slot. Clearing that slot unpairs this app too. Cards do not report which app owns other slots. Unsupported slot indexes are refused by the card." }
                 LogosComboBox { id: wordCount; objectName: "adminWordCount"; visible: admin.action === "generate_phrase" && !admin.loadingGenerated; Layout.fillWidth: true; model: ["12 words","15 words","18 words","21 words","24 words"] }
                 LogosText { visible: admin.needsPhrase || admin.action === "generate_phrase"; Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Recovery words and passphrases pass through this computer. They are not saved by this app. Keep a written backup; anyone with these words can access the wallet." }
-                LogosTextField { id: phrase; objectName: "adminPhrase"; visible: admin.needsPhrase; Layout.fillWidth: true; placeholderText: "English BIP39 recovery phrase"; echoMode: TextInput.Password }
+                Accounts.PhraseGrid { id: phrase; objectName: "adminPhrase"; visible: admin.needsPhrase; Layout.fillWidth: true }
                 GridLayout {
                     visible: admin.generated.length > 0; Layout.fillWidth: true; columns: 2
                     Repeater { model: admin.generated; delegate: LogosText { required property string modelData; required property int index; Layout.fillWidth: true; text: (index+1) + ". " + modelData; textFormat: Text.PlainText } }
@@ -154,6 +169,7 @@ LogosDialog {
             }
         }
         LogosText { objectName: "adminResult"; text: admin.message; textFormat: Text.PlainText; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere; color: admin.failed ? Theme.palette.error : Theme.palette.textSecondary }
+        LogosText { objectName: "adminBlocked"; visible: !!admin.blocked; text: admin.blocked; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.textSecondary }
         RowLayout {
             LogosButton { text: "Done"; enabled: !admin.busy; onClicked: admin.close() }
             Item { Layout.fillWidth: true }
@@ -169,7 +185,7 @@ LogosDialog {
                     && (!(admin.action === "load_phrase" || admin.loadingGenerated) || backedUp.checked)
                     && (!admin.confirmation || confirm.text === admin.confirmation)
                     && (admin.action !== "unpair" || slot.text.length === 1)
-                    && (!(["load_phrase","generate_key"].indexOf(admin.action) >= 0 || admin.loadingGenerated) || !(admin.selected && admin.selected.keyUid))
+                    && !(admin.loadsKeys && admin.holdsKeys)
                 onClicked: admin.perform()
             }
         }
