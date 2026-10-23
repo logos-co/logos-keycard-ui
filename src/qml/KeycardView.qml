@@ -244,7 +244,8 @@ Item {
                     enabled: root.ready && root.connected && !root.needsPairing && !root.working && !addSheet.submitting && accountField.text.length > 0 && Number(accountField.text) <= 2147483647 && (root.shell || pinField.text.length === 6)
                     onClicked: {
                         var secret = pinField.text; pinField.text = ""; addSheet.message = ""; addSheet.submitting = true
-                        logos.watch(root.backend.addAccount(root.selectedWalletId, coin.currentIndex === 0 ? "evm" : script.currentIndex === 0 ? "bitcoin" : "bitcoin_taproot", network.currentIndex === 0 ? "main" : "test", Number(accountField.text), labelField.text.trim() || ((coin.currentIndex === 0 ? "Ethereum " : "Bitcoin ") + (Number(accountField.text) + 1)), secret, root.route(root.connection)), function(ok) { addSheet.submitting = false })
+                        // The account's own name, or none: never a default, nor the last account's.
+                        logos.watch(root.backend.addAccount(root.selectedWalletId, coin.currentIndex === 0 ? "evm" : script.currentIndex === 0 ? "bitcoin" : "bitcoin_taproot", network.currentIndex === 0 ? "main" : "test", Number(accountField.text), labelField.text.trim(), secret, root.route(root.connection)), function(ok) { addSheet.submitting = false; if (ok) labelField.text = "" })
                     }
                 }
             }
