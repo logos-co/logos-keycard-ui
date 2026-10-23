@@ -50,7 +50,8 @@ LogosDialog {
     readonly property bool holdsKeys: !!(selected && selected.keyUid)
     // Why the button below can't be pressed yet, in words: it is often a field out of view.
     readonly property string blocked: {
-        if (!selected || changed || busy || !action) return ""
+        if (!selected || busy || !action) return ""
+        if (changed) return "The card changed. Press Refresh card to see it as it is now."
         if (loadsKeys && holdsKeys) return "This card already holds keys. Erase them first (Erase keys from card) to put another wallet on it."
         if (needsPin && pin.text.length !== 6) return loadingGenerated ? "Type the card's PIN again to load the phrase." : "Type the card's PIN."
         if (needsNewPin && (newPin.text.length !== 6 || newPin.text !== repeatPin.text)) return "Type the new PIN twice."
