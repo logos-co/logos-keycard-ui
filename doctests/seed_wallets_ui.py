@@ -30,6 +30,15 @@ def wait(expr,name=ROOT):
   time.sleep(.1)
  raise AssertionError((expr,value('backend.lastError')))
 def close(name):evaluate('close()',name)
+def pick(first, picks, pin=True):
+ """Show five accounts from `first`, tick the rows in `picks` ([(row, name)]), name them, add them."""
+ setp('firstIndex','text',str(first))
+ if pin: setp('offerPin','text','123456')
+ click('showAccounts');time.sleep(.5);wait('exporting.state === "done" && !working')
+ for row,_ in picks: click('selectAccount_'+str(row))
+ click('nameAccounts')
+ for n,(_,name) in enumerate(picks): setp('addAccountName_'+str(n),'text',name)
+ click('keepAccounts');wait('!opened','addAccountsDialog')
 def rename_account(wallet, label):
  click('manageWallet_'+str(wallet));click('renameAccount_0')
  setp('accountName','text',label);click('saveAccountName')
@@ -39,19 +48,18 @@ wait('ready && cardGroups.length === 1 && shellDevices.length === 1')
 assert value('cards.length === 1 && cards[0].reader === "Keycard simulator"'), 'Simulator required'
 assert value('shellDevices[0].serial') == '62a772f85e4be6226108b56c0b1cf9', 'Known emulator required'
 reader=value('wallets.findIndex(function(g){return g.id.indexOf("seed:") === 0})')
-click('addAccounts_'+str(reader));setp('offerPin','text','123456');setp('offerLabel','text','Reader savings');click('offerButton')
-wait('cardGroups[0].accounts.length === 1 && !working');close('addAccountsDialog')
+click('addAccounts_'+str(reader));pick(0,[(0,'Reader savings')])
+wait('cardGroups[0].accounts.length === 1 && !working')
 click('manageWallet_'+str(reader));setp('walletName','text','Reader wallet');click('saveWalletName');wait('cardGroups[0].name === "Reader wallet"');close('manageWalletDialog')
 evaluate('openAdd({id:"shell:"+shellDevices[0].serial+":", serial:shellDevices[0].serial,pending:true,transport:"shell",accounts:[],connected:true})')
-setp('offerLabel','text','Shell savings');click('offerButton')
+pick(0,[(0,'Shell savings')],pin=False)
 wait('shellGroups.length === 1 && shellGroups[0].accounts.length === 1 && !working')
 wait('wallets.length === 1 && wallets[0].connections.length === 2')
 assert value('wallets[0].accounts.length') == 1
 assert value('wallets[0].accounts[0].aliases') == ['Reader savings','Shell savings']
-assert value('text','offerAccount') == '1'
-assert value('shell'), 'Adding through USB must keep USB selected after merge'
-setp('offerLabel','text','Second account');click('offerButton');wait('shellGroups[0].accounts.length === 2 && !working')
-close('addAccountsDialog')
+evaluate('openAdd(wallets[0]); selectedConnectionId = "shell:" + shellDevices[0].serial + ":"')
+assert value('shell'), 'The merged wallet adds through the Shell it names'
+pick(1,[(0,'Second account')],pin=False);wait('shellGroups[0].accounts.length === 2 && !working')
 click('manageWallet_0');setp('walletName','text','Unified wallet');click('saveWalletName');wait('cardGroups[0].name === "Unified wallet" && shellGroups[0].name === "Unified wallet"')
 click('renameAccount_0');setp('accountName','text','Unified savings');click('saveAccountName');wait('!opened','renameAccountDialog')
 wait('cardGroups[0].accounts[0].label === "Unified savings" && shellGroups[0].accounts[0].label === "Unified savings"')

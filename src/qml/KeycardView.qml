@@ -18,20 +18,6 @@ Item {
             if (name === "keycard_ui") root.ready = isReady && root.backend !== null
         }
     }
-    onWalletsChanged: Qt.callLater(finishExport)
-    function finishExport() {
-        if (!addSheet.opened || !addSheet.exportActive || exporting.state !== "done") return
-        if (pendingWallet && shell) {
-            var offered = (exporting.accounts || [])[0]
-            var found = offered && shellGroups.find(function(g) { return g.serial === root.pendingWallet.serial && g.accounts.some(function(a) { return a.id === offered.id }) })
-            if (found) { selectedConnectionId = route(connection); selectedWalletId = found.id; pendingWallet = null }
-        }
-        var added = exporting.accounts || []
-        if (wallet && added.length && added.every(function(a) { return (root.wallet.accounts || []).some(function(b) { return a.id === b.id || (b.sources || []).some(function(o) { return o.id === a.id }) }) })) {
-            nextIndex()
-            addSheet.exportActive = false
-        }
-    }
     function j(t, fb) { try { return JSON.parse(t || fb) } catch(e) { return JSON.parse(fb) } }
     readonly property var cards: ready ? j(backend.cardsJson, "[]") : []
     readonly property var cardGroups: ready ? j(backend.cardGroupsJson, "[]") : []
@@ -75,17 +61,6 @@ Item {
     function familyWords(f) { return f === "evm" ? "Ethereum" : f === "bitcoin" ? "Bitcoin · Native SegWit" : "Bitcoin · Taproot" }
     function selectWallet(g) { selectedWalletId = g.id; selectedConnectionId = ""; pendingWallet = g.pending ? g : null }
     function openAdd(g) { selectWallet(g); addSheet.open() }
-    function nextIndex() {
-        var family = coin.currentIndex === 0 ? "evm" : script.currentIndex === 0 ? "bitcoin" : "bitcoin_taproot"
-        var chain = network.currentIndex === 0 ? "main" : "test", n = 0
-        ;((wallet && wallet.accounts) || []).forEach(function(a) {
-            if (a.family !== family || (family !== "evm" && a.chain !== chain)) return
-            var path = (a.path || "").split("/")
-            if (family === "evm" && path.slice(0,5).join("/") !== "m/44'/60'/0'/0") return
-            var i = parseInt(path[path.length-1]); if (!isNaN(i)) n = Math.max(n, i+1)
-        })
-        accountField.text = String(n)
-    }
     function grouped(hex) { return (hex || "").replace(/(.{8})/g, "$1 ").trim() }
 
     CardAdministration { id: adminSheet; backend: root.backend; cards: root.cards }
@@ -175,78 +150,225 @@ Item {
     LogosDialog {
         id: addSheet; objectName: "addAccountsDialog"
         title: "Add accounts · " + root.groupName(root.wallet)
-        anchors.centerIn: parent; width: Math.min(parent.width - 40, 580)
+        anchors.centerIn: parent
+        width: Math.min(parent.width - 40, 640); height: Math.min(parent.height - 40, 760)
         closePolicy: root.working || submitting ? Popup.NoAutoClose : Popup.CloseOnEscape
         property bool submitting: false
-        property bool exportActive: false
-        onOpened: { message = ""; submitting = false; exportActive = false; coin.currentIndex = 0; script.currentIndex = 0; network.currentIndex = 0; labelField.text = ""; pinField.text = ""; advanced.checked = false; root.nextIndex() }
-        onClosed: { pinField.text = ""; pairingField.text = "" }
+        // 0 · choose accounts, 1 · name them.
+        property int step: 0
+        property int from: 0
+        property var rows: []
+        property var selected: []
+        // Each selected account's own name, by its row key: kept apart so typing doesn't rebuild the rows.
+        property var names: ({})
+        property string notice: ""
+        // The job under way: "preview", "keep", or none.
+        property string asked: ""
+        readonly property string family: coin.currentIndex === 0 ? "evm" : script.currentIndex === 0 ? "bitcoin" : "bitcoin_taproot"
+        readonly property string chain: network.currentIndex === 0 ? "main" : "test"
+        readonly property bool canAsk: root.ready && root.connected && !root.needsPairing && !root.working && !submitting
+                                       && (root.shell || pinField.text.length === 6)
+        function rowKey(r) { return r.family + ":" + r.chain + ":" + r.index }
+        function chosen(key) { return selected.some(function(r) { return r.key === key }) }
+        function toggle(r, on) {
+            var copy = selected.filter(function(s) { return s.key !== r.key })
+            if (on) copy.push(r)
+            selected = copy
+        }
+        function present(a) {
+            return ((root.wallet && root.wallet.accounts) || []).some(function(b) {
+                return a.id === b.id || (b.sources || []).some(function(o) { return o.id === a.id })
+            })
+        }
+        function entry(family, chain, index, label) {
+            var e = { family: family, account: index }
+            if (family !== "evm") e.chain = chain
+            if (label) e.label = label
+            return e
+        }
+        // Five accounts from `start`, read from the device and kept nowhere yet.
+        function show(start) {
+            from = Math.max(0, start); firstIndex.text = String(from)
+            var entries = []
+            for (var i = 0; i < 5; i++) entries.push(entry(family, chain, from + i, ""))
+            run("preview", { entries: entries, preview: true }, pinField.text)
+        }
+        // The picks, each its own name or none, kept from the previews without the device.
+        function keep() {
+            var entries = selected.map(function(r) { return entry(r.family, r.chain, r.index, (names[r.key] || "").trim()) })
+            run("keep", { entries: entries, fromPreview: true }, "")
+        }
+        function run(what, request, secret) {
+            notice = ""; submitting = true; asked = what
+            logos.watch(root.backend.addAccounts(root.selectedWalletId, root.route(root.connection), JSON.stringify(request), secret), function(ok) {
+                addSheet.submitting = false
+                if (!ok) addSheet.asked = ""
+            })
+        }
+        function shown(accounts) {
+            return accounts.map(function(a) {
+                var r = { family: a.family, chain: a.family === "evm" ? "" : (a.chain || addSheet.chain),
+                          index: parseInt((a.path || "").split("/").pop()), path: a.path || "",
+                          address: (a.preview || {}).address || a.address || "", present: addSheet.present(a) }
+                r.key = addSheet.rowKey(r)
+                return r
+            })
+        }
+        onOpened: {
+            step = 0; from = 0; rows = []; selected = []; names = ({}); notice = ""; asked = ""; submitting = false
+            coin.currentIndex = 0; script.currentIndex = 0; network.currentIndex = 0; firstIndex.text = "0"; pinField.text = ""
+        }
+        onClosed: { pinField.text = ""; pairingField.text = ""; rows = []; selected = []; names = ({}); asked = "" }
         Connections {
             target: root
             function onExportingChanged() {
-                if (!addSheet.opened) return
-                if (root.working) addSheet.exportActive = true
-                if (root.exporting.state === "done") { addSheet.message = "Account added."; Qt.callLater(root.finishExport) }
-                if (root.exporting.state === "failed") addSheet.message = root.exporting.error || "Could not add the account."
+                if (!addSheet.opened || !addSheet.asked) return
+                var state = root.exporting.state
+                if (state === "failed") { addSheet.notice = root.exporting.error || "The device did not answer."; addSheet.asked = ""; return }
+                if (state !== "done") return
+                var was = addSheet.asked
+                addSheet.asked = ""
+                if (was === "preview") addSheet.rows = addSheet.shown(root.exporting.accounts || [])
+                else addSheet.close()
             }
         }
         contentItem: ColumnLayout {
             spacing: Theme.spacing.small
-            LogosText { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: root.shell ? "Unlock the wallet on your Shell, then confirm the public-key request on its screen." : "Choose an account type. Enter the card's PIN to add its public account to your apps." }
-            LogosComboBox {
-                objectName: "walletConnection"; visible: root.connections.length > 1; Layout.fillWidth: true
-                model: root.connections.map(function(c) { return (c.transport === "shell" ? "Shell USB · " + root.shortId(c.serial) : "Reader · " + root.shortId(c.id)) })
-                currentIndex: root.connections.indexOf(root.connection)
-                enabled: !root.working
-                onActivated: root.selectedConnectionId = root.route(root.connections[currentIndex])
+            LogosText { color: Theme.palette.textSecondary; text: addSheet.step === 0 ? "1 · Choose accounts" : "2 · Name them" }
+            LogosScrollView {
+                id: addScroll
+                Layout.fillWidth: true; Layout.fillHeight: true
+                contentWidth: availableWidth
+                ColumnLayout {
+                    width: addScroll.availableWidth
+                    spacing: Theme.spacing.small
+                    ColumnLayout {
+                        visible: addSheet.step === 0; Layout.fillWidth: true
+                        LogosText {
+                            Layout.fillWidth: true; wrapMode: Text.WordWrap
+                            text: root.shell ? "Unlock the wallet on your Shell. Each address shown is a public-key request to confirm on its screen."
+                                             : "Enter the card's PIN to show its accounts. Only public keys leave the card."
+                        }
+                        LogosComboBox {
+                            objectName: "walletConnection"; visible: root.connections.length > 1; Layout.fillWidth: true
+                            model: root.connections.map(function(c) { return (c.transport === "shell" ? "Shell USB · " + root.shortId(c.serial) : "Reader · " + root.shortId(c.id)) })
+                            currentIndex: root.connections.indexOf(root.connection)
+                            enabled: !root.working && !addSheet.submitting
+                            onActivated: { root.selectedConnectionId = root.route(root.connections[currentIndex]); addSheet.rows = [] }
+                        }
+                        LogosText { visible: !root.connected; text: "Connect this wallet to continue."; color: Theme.palette.error }
+                        LogosText { visible: root.needsPairing; Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Automatic pairing is unavailable for this card. Enter the pairing password from its setup to pair manually." }
+                        RowLayout {
+                            visible: root.needsPairing; Layout.fillWidth: true
+                            LogosInfoButton { objectName: "pairingInfo"; title: "Pairing password"; Accessible.name: "Help: Pairing password"; text: "Pairing lets this app establish a secure connection to the card. Its password comes from the setup that initialized the card and is separate from the PIN. The app first tries KeycardDefaultPairing, the standard default for 3.x cards. If that does not work, enter your custom pairing password here. The app keeps the resulting pairing, not the password. If you do not know it, check the app or tool used to set up this card." }
+                            LogosTextField { id: pairingField; objectName: "pairingField"; Layout.fillWidth: true; echoMode: TextInput.Password; placeholderText: "Pairing password" }
+                            LogosButton { objectName: "pairButton"; text: "Pair"; enabled: !!pairingField.text && !addSheet.submitting; onClicked: {
+                                var secret = pairingField.text; pairingField.text = ""; addSheet.submitting = true
+                                logos.watch(root.backend.pair(root.reader, secret), function(ok) { addSheet.submitting = false })
+                            } }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            LogosComboBox { id: coin; objectName: "accountType"; model: ["Ethereum", "Bitcoin"]; enabled: !root.working && !addSheet.submitting; onActivated: addSheet.rows = [] }
+                            LogosComboBox { id: script; objectName: "bitcoinType"; visible: coin.currentIndex === 1; Layout.fillWidth: true; model: root.shell || (root.card && root.card.taproot) ? ["Native SegWit", "Taproot"] : ["Native SegWit"]; enabled: !root.working && !addSheet.submitting; onActivated: addSheet.rows = [] }
+                            LogosComboBox { id: network; objectName: "accountNetwork"; visible: coin.currentIndex === 1; model: ["Bitcoin", "Test networks"]; enabled: !root.working && !addSheet.submitting; onActivated: addSheet.rows = [] }
+                            Item { Layout.fillWidth: coin.currentIndex === 0 }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            LogosText { text: "First index" }
+                            LogosTextField { id: firstIndex; objectName: "firstIndex"; Layout.fillWidth: true; text: "0"; enabled: !root.working && !addSheet.submitting; validator: IntValidator { bottom: 0; top: 2147483643 } }
+                            LogosInfoButton { objectName: "cardDerivationInfo"; title: "Account indexes"; Accessible.name: "Help: Account indexes"; text: "An index is the last part of the derivation path: each one is a different account from the same recovery seed. Ethereum gives one address per index; a Bitcoin account holds receive and change addresses, and its first receiving address is shown. Adding accounts exports public information so apps can display them; spending still needs the device." }
+                        }
+                        LogosText {
+                            objectName: "derivationPath"; color: Theme.palette.textSecondary
+                            text: coin.currentIndex === 0 ? "m/44'/60'/0'/0/index" : "m/" + (script.currentIndex === 0 ? "84" : "86") + "'/" + (network.currentIndex === 0 ? "0" : "1") + "'/index'"
+                        }
+                        LogosTextField { id: pinField; objectName: "offerPin"; visible: !root.shell && !root.needsPairing; Layout.fillWidth: true; enabled: !root.working && !addSheet.submitting; echoMode: TextInput.Password; placeholderText: "Card PIN"; validator: RegularExpressionValidator { regularExpression: /[0-9]{0,6}/ } }
+                        LogosButton {
+                            objectName: "showAccounts"; text: "Show accounts"
+                            enabled: addSheet.canAsk && firstIndex.acceptableInput
+                            onClicked: addSheet.show(Number(firstIndex.text))
+                        }
+                        Repeater {
+                            model: addSheet.rows
+                            delegate: Frame {
+                                required property var modelData
+                                required property int index
+                                Layout.fillWidth: true
+                                RowLayout {
+                                    anchors.fill: parent
+                                    LogosCheckbox {
+                                        objectName: "selectAccount_" + index
+                                        checked: addSheet.chosen(modelData.key)
+                                        enabled: !root.working && !addSheet.submitting && !modelData.present && (checked || addSheet.selected.length < 20)
+                                        onToggled: addSheet.toggle(modelData, checked)
+                                    }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        LogosText { text: "Index " + modelData.index + (modelData.present ? " · Already added" : "") }
+                                        LogosText { Layout.fillWidth: true; wrapMode: Text.WrapAnywhere; textFormat: Text.PlainText; text: modelData.address || "Address unavailable" }
+                                        LogosText { Layout.fillWidth: true; wrapMode: Text.WrapAnywhere; color: Theme.palette.textSecondary; text: modelData.path }
+                                    }
+                                }
+                            }
+                        }
+                        RowLayout {
+                            visible: addSheet.rows.length > 0; Layout.fillWidth: true
+                            LogosButton { objectName: "previousAccounts"; text: "Previous"; enabled: addSheet.canAsk && addSheet.from > 0; onClicked: addSheet.show(addSheet.from - 5) }
+                            LogosText { text: addSheet.from + "–" + (addSheet.from + 4) }
+                            LogosButton { objectName: "nextAccounts"; text: "Next"; enabled: addSheet.canAsk && addSheet.from < 2147483639; onClicked: addSheet.show(addSheet.from + 5) }
+                            Item { Layout.fillWidth: true }
+                        }
+                    }
+                    ColumnLayout {
+                        visible: addSheet.step === 1; Layout.fillWidth: true
+                        LogosText { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Name each account, or leave it empty: an unnamed account shows as its kind and address." }
+                        Repeater {
+                            model: addSheet.selected
+                            delegate: ColumnLayout {
+                                required property var modelData
+                                required property int index
+                                Layout.fillWidth: true
+                                LogosText {
+                                    Layout.fillWidth: true; wrapMode: Text.WrapAnywhere; textFormat: Text.PlainText
+                                    text: root.familyWords(modelData.family) + (modelData.chain === "test" ? " · Test" : "") + " · " + modelData.path + "\n" + modelData.address
+                                }
+                                LogosTextField {
+                                    objectName: "addAccountName_" + index
+                                    Layout.fillWidth: true
+                                    placeholderText: "Account name (optional)"; textInput.maximumLength: 80
+                                    text: addSheet.names[modelData.key] || ""
+                                    onTextChanged: addSheet.names[modelData.key] = text
+                                }
+                            }
+                        }
+                    }
+                    LogosText {
+                        visible: root.working; Layout.fillWidth: true; wrapMode: Text.WordWrap
+                        text: addSheet.asked === "keep" ? "Adding the accounts…" : root.shell ? "Confirm each public-key request on the Shell…" : "Reading the card's public accounts…"
+                    }
+                    LogosText { objectName: "addMessage"; visible: !!addSheet.notice; Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText; color: Theme.palette.error; text: addSheet.notice }
+                    LogosText { visible: root.ready && !!root.backend.lastError; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.error; textFormat: Text.PlainText; text: root.ready ? root.backend.lastError : "" }
+                }
             }
-            LogosText { visible: !root.connected; text: "Connect this wallet to continue."; color: Theme.palette.error }
-            LogosText { visible: root.needsPairing; Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Automatic pairing is unavailable for this card. Enter the pairing password from its setup to pair manually." }
-            RowLayout {
-                visible: root.needsPairing; Layout.fillWidth: true
-                LogosInfoButton { objectName: "pairingInfo"; title: "Pairing password"; Accessible.name: "Help: Pairing password"; text: "Pairing lets this app establish a secure connection to the card. Its password comes from the setup that initialized the card and is separate from the PIN. The app first tries KeycardDefaultPairing, the standard default for 3.x cards. If that does not work, enter your custom pairing password here. The app keeps the resulting pairing, not the password. If you do not know it, check the app or tool used to set up this card." }
-                LogosTextField { id: pairingField; objectName: "pairingField"; Layout.fillWidth: true; echoMode: TextInput.Password; placeholderText: "Pairing password" }
-                LogosButton { objectName: "pairButton"; text: "Pair"; enabled: !!pairingField.text && !addSheet.submitting; onClicked: {
-                    var secret = pairingField.text; pairingField.text = ""; addSheet.submitting = true
-                    logos.watch(root.backend.pair(root.reader, secret), function(ok) { addSheet.submitting = false })
-                } }
-            }
-            LogosComboBox { id: coin; objectName: "accountType"; Layout.fillWidth: true; model: ["Ethereum", "Bitcoin"]; enabled: !root.working && !addSheet.submitting; onActivated: root.nextIndex() }
-            RowLayout {
-                visible: coin.currentIndex === 1; Layout.fillWidth: true
-                LogosComboBox { id: script; objectName: "bitcoinType"; Layout.fillWidth: true; model: root.shell || (root.card && root.card.taproot) ? ["Native SegWit", "Taproot"] : ["Native SegWit"]; enabled: !root.working; onActivated: root.nextIndex() }
-                LogosComboBox { id: network; objectName: "accountNetwork"; model: ["Bitcoin", "Test networks"]; enabled: !root.working; onActivated: root.nextIndex() }
-            }
-            LogosTextField { id: labelField; objectName: "offerLabel"; Layout.fillWidth: true; placeholderText: "Account name (optional)"; enabled: !root.working; textInput.maximumLength: 80 }
-            RowLayout {
-                LogosCheckbox { id: advanced; text: "Choose account index"; enabled: !root.working }
-                LogosInfoButton { objectName: "cardDerivationInfo"; title: "Adding accounts"; Accessible.name: "Help: Adding accounts"; text: "An index selects a different account derived from the same recovery seed. The app suggests the next index after the accounts already added here. Ethereum exports one address; a Bitcoin account includes receive and change addresses. Adding an account exports public information so apps can display it; spending still needs the card." }
-            }
-            RowLayout {
-                visible: advanced.checked; Layout.fillWidth: true
-                LogosText { text: "Account index" }
-                LogosTextField { id: accountField; objectName: "offerAccount"; text: "0"; Layout.fillWidth: true; enabled: !root.working; validator: IntValidator { bottom: 0; top: 2147483647 } }
-            }
-            LogosText {
-                objectName: "derivationPath"; visible: advanced.checked; color: Theme.palette.textSecondary
-                text: coin.currentIndex === 0 ? "m/44'/60'/0'/0/" + accountField.text : "m/" + (script.currentIndex === 0 ? "84" : "86") + "'/" + (network.currentIndex === 0 ? "0" : "1") + "'/" + accountField.text + "'"
-            }
-            LogosTextField { id: pinField; objectName: "offerPin"; visible: !root.shell && !root.needsPairing; Layout.fillWidth: true; enabled: !root.working && !addSheet.submitting; echoMode: TextInput.Password; placeholderText: "Card PIN"; validator: RegularExpressionValidator { regularExpression: /[0-9]{0,6}/ } }
-            LogosText { visible: root.working; Layout.fillWidth: true; wrapMode: Text.WordWrap; text: root.shell ? "Confirm the wallet identity and account public-key requests on the Shell." : "Reading the card's public account…" }
-            LogosText { visible: !!addSheet.message; Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText; text: addSheet.message }
-            LogosText { visible: root.ready && !!root.backend.lastError; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.error; textFormat: Text.PlainText; text: root.ready ? root.backend.lastError : "" }
+            LogosText { objectName: "selectedCount"; visible: addSheet.step === 0 && addSheet.selected.length > 0; text: addSheet.selected.length + " selected across account types (up to 20)" }
             RowLayout {
                 Layout.fillWidth: true
-                LogosButton { text: "Done"; enabled: !root.working && !addSheet.submitting; onClicked: addSheet.close() }
+                LogosButton { objectName: "addCancel"; text: "Cancel"; enabled: !root.working && !addSheet.submitting; onClicked: addSheet.close() }
+                LogosButton { objectName: "addBack"; text: "Back"; visible: addSheet.step === 1; enabled: !root.working && !addSheet.submitting; onClicked: { addSheet.step = 0; addSheet.notice = "" } }
                 Item { Layout.fillWidth: true }
                 LogosButton {
-                    objectName: "offerButton"; text: "Add account"
-                    enabled: root.ready && root.connected && !root.needsPairing && !root.working && !addSheet.submitting && accountField.text.length > 0 && Number(accountField.text) <= 2147483647 && (root.shell || pinField.text.length === 6)
-                    onClicked: {
-                        var secret = pinField.text; pinField.text = ""; addSheet.message = ""; addSheet.submitting = true
-                        // The account's own name, or none: never a default, nor the last account's.
-                        logos.watch(root.backend.addAccount(root.selectedWalletId, coin.currentIndex === 0 ? "evm" : script.currentIndex === 0 ? "bitcoin" : "bitcoin_taproot", network.currentIndex === 0 ? "main" : "test", Number(accountField.text), labelField.text.trim(), secret, root.route(root.connection)), function(ok) { addSheet.submitting = false; if (ok) labelField.text = "" })
-                    }
+                    objectName: "nameAccounts"; visible: addSheet.step === 0; text: "Continue"
+                    enabled: !root.working && !addSheet.submitting && addSheet.selected.length > 0
+                    // The picks are kept from the previews: the PIN isn't needed again.
+                    onClicked: { pinField.text = ""; addSheet.notice = ""; addSheet.step = 1 }
+                }
+                LogosButton {
+                    objectName: "keepAccounts"; visible: addSheet.step === 1
+                    text: "Add " + addSheet.selected.length + (addSheet.selected.length === 1 ? " account" : " accounts")
+                    enabled: root.ready && !root.working && !addSheet.submitting && addSheet.selected.length > 0
+                    onClicked: addSheet.keep()
                 }
             }
         }

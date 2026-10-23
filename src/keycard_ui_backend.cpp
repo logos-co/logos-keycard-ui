@@ -241,11 +241,25 @@ void KeycardUiBackend::poll()
     const QString state = reply.value(QStringLiteral("state")).toString();
     reply.remove(QStringLiteral("ok"));
     reply.remove(QStringLiteral("job"));
+    // A preview's accounts are shown by address, Bitcoin's by its first receiving one.
+    if (m_preview && state == QLatin1String("done")) {
+        QJsonArray accounts = reply.value(QStringLiteral("accounts")).toArray();
+        const auto previews = parseObject(modules().keycard_module.account_previews(compact(accounts)))
+                                  .value(QStringLiteral("previews")).toArray();
+        for (int i = 0; i < accounts.size(); ++i) {
+            auto a = accounts[i].toObject();
+            a["preview"] = i < previews.size() ? previews[i].toObject()
+                                               : QJsonObject{{"error", "Address preview unavailable"}};
+            accounts[i] = a;
+        }
+        reply["accounts"] = accounts;
+    }
     setExportJson(compact(reply));
     if (state == QLatin1String("done") || state == QLatin1String("failed")) {
         m_poll.stop();
         m_job.clear();
-        refresh();
+        // Not after a shown preview: re-reading the cards would clear the PIN the next page needs.
+        if (!m_preview || state == QLatin1String("failed")) refresh();
     }
 }
 
@@ -388,42 +402,56 @@ bool KeycardUiBackend::verifyWallet(QString walletId, QString serial)
 }
 
 // The UI supplies an explicit wallet, never whichever device happens to be first.
-bool KeycardUiBackend::addAccount(QString walletId, QString family, QString chain, int account, QString label, QString pin, QString connectionId)
+bool KeycardUiBackend::addAccounts(QString walletId, QString connectionId, QString requestJson, QString pin)
 {
     setLastError(QString());
     if (!m_job.isEmpty()) { wipe(pin); setLastError("An account is already being added."); return false; }
+    QJsonObject params = parseObject(requestJson);
+    const bool preview = params.value("preview").toBool();
+    const bool kept = params.value("fromPreview").toBool();
+    QJsonObject reply;
     if (!connectionId.startsWith("shell:")) {
         refresh();
+        QString reader;
         for (const auto &value : QJsonDocument::fromJson(cardsJson().toUtf8()).array()) {
             const auto c = value.toObject();
             const auto id = c.value("secureChannel").toInt() == 2
                 ? "identity:" + c.value("identity").toString() : "instance:" + c.value("instanceUid").toString();
-            if (id == connectionId) {
-                if (walletId.startsWith("seed:") && "seed:" + c.value("keyUid").toString() != walletId) {
-                    wipe(pin); setLastError("The reader contains a different wallet."); return false;
-                }
-                const bool result = offerChecked(c.value("reader").toString(), compact(QJsonArray{family}), chain, account, label, pin, connectionId);
-                wipe(pin);
-                return result;
+            if (id != connectionId) continue;
+            if (walletId.startsWith("seed:") && "seed:" + c.value("keyUid").toString() != walletId) {
+                wipe(pin); setLastError("The reader contains a different wallet."); return false;
             }
+            reader = c.value("reader").toString();
         }
-        wipe(pin); setLastError("Insert the selected Keycard to add accounts."); return false;
+        if (reader.isEmpty()) { wipe(pin); setLastError("Insert the selected Keycard to add accounts."); return false; }
+        params.insert("reader", reader);
+        params.insert("cardId", connectionId);
+        // Kept from a preview, an account needs no PIN: the card isn't asked again.
+        if (!kept) params.insert("pin", pin);
+        wipe(pin);
+        QString text_ = text(params);
+        params = QJsonObject();
+        reply = parseObject(modules().keycard_module.add_accounts(text_));
+        wipe(text_);
+        m_shellJob = false;
+    } else {
+        wipe(pin); // USB Shell collects authorization on the device, never on this computer.
+        const auto parts = connectionId.split(':');
+        if (parts.size() != 3 || parts[1].isEmpty()) { setLastError("Invalid USB wallet."); return false; }
+        params.insert("serial", parts[1]);
+        if (walletId.startsWith("seed:")) params.insert("masterKeyId", walletId.mid(5));
+        else {
+            const auto legacy = walletId.split(':');
+            if (legacy.size() == 3 && !legacy[2].isEmpty() && legacy[2] != "unknown") params.insert("fingerprint", legacy[2]);
+        }
+        reply = parseObject(modules().keycard_shell_module.add_accounts(text(params)));
+        m_shellJob = true;
     }
-    wipe(pin); // USB Shell collects authorization on the device, never on this computer.
-    const auto parts = connectionId.split(':');
-    if (parts.size() != 3 || parts[1].isEmpty()) { setLastError("Invalid USB wallet."); return false; }
-    QJsonObject params{{"families", QJsonArray{family}}, {"chain", chain}, {"account", account}, {"serial", parts[1]}};
-    if (walletId.startsWith("seed:")) params.insert("masterKeyId", walletId.mid(5));
-    else {
-        const auto legacy = walletId.split(':');
-        if (legacy.size() == 3 && !legacy[2].isEmpty() && legacy[2] != "unknown") params.insert("fingerprint", legacy[2]);
-    }
-    if (!label.trimmed().isEmpty()) params.insert("label", label.trimmed());
-    const auto reply = parseObject(modules().keycard_shell_module.add_accounts(text(params)));
-    if (!ok(reply, "Add account")) return false;
-    m_shellJob = true;
+    if (!ok(reply, "Add accounts")) return false;
+    m_preview = preview;
     m_job = reply.value("job").toString();
-    setExportJson(QStringLiteral("{\"state\":\"confirm_on_device\"}"));
+    setExportJson(m_shellJob && !kept ? QStringLiteral("{\"state\":\"confirm_on_device\"}")
+                                      : QStringLiteral("{\"state\":\"working\"}"));
     m_poll.start();
     return true;
 }

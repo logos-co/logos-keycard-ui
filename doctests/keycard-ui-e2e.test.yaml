@@ -37,8 +37,8 @@ sections:
       - title: "The Keycard module and its simulator"
         run: |
           set -eu
-          nix build 'github:logos-co/logos-keycard-module/main#install' --no-write-lock-file -o result-module
-          nix build 'github:logos-co/logos-keycard-module/main#simulator' --no-write-lock-file -o result-simulator
+          nix build 'github:logos-co/logos-keycard-module/92eabb281518f0d80c7e06794aab7f54713011ac#install' --no-write-lock-file -o result-module
+          nix build 'github:logos-co/logos-keycard-module/92eabb281518f0d80c7e06794aab7f54713011ac#simulator' --no-write-lock-file -o result-simulator
         code_block: |
           nix build 'github:logos-co/logos-keycard-module#install' -o result-module
           nix build 'github:logos-co/logos-keycard-module#simulator' -o result-simulator
@@ -49,7 +49,7 @@ sections:
         run: |
           set -eu
           mkdir -p tree/modules
-          nix build 'github:logos-co/logos-keycard-shell-module#install' --no-write-lock-file -o result-shell
+          nix build 'github:logos-co/logos-keycard-shell-module/5d6e21319029809101c1c8ceac19abd061eb1943#install' --no-write-lock-file -o result-shell
           cp -rL result-shell/modules/* tree/modules/
           cp -rL result-module/modules/* tree/modules/
           chmod -R u+w tree
@@ -95,7 +95,7 @@ sections:
             - name: "Close settings"
               action: click_object
               find_value: "manageDone"
-            - name: "Derive an account"
+            - name: "Choose accounts"
               action: click_object
               find_value: "addAccounts_0"
             - name: "Authorize the public export"
@@ -103,17 +103,31 @@ sections:
               find_by: "objectName"
               find_value: "offerPin"
               value: "123456"
-            - name: "Add Ethereum"
+            - name: "Show the first five Ethereum accounts"
               action: click_object
-              find_value: "offerButton"
-            - name: "Account added"
+              find_value: "showAccounts"
+            - name: "Their indexes"
               action: wait_for
-              texts: ["Account added."]
+              texts: ["Index 0", "Index 4", "m/44'/60'/0'/0/4"]
               timeout: 60000
-            - name: "Next derivation index"
-              action: expect_property
+            - name: "Pick the first"
+              action: click_object
+              find_value: "selectAccount_0"
+            - name: "And the third"
+              action: click_object
+              find_value: "selectAccount_2"
+            - name: "Name them"
+              action: click_object
+              find_value: "nameAccounts"
+            - name: "Name only the first"
+              action: set_text
               find_by: "objectName"
-              find_value: "offerAccount"
-              property: "text"
-              value: "1"
-              timeout: 10000
+              find_value: "addAccountName_0"
+              value: "Spending"
+            - name: "Add both, without the PIN again"
+              action: click_object
+              find_value: "keepAccounts"
+            - name: "Both accounts are in the wallet"
+              action: wait_for
+              texts: ["Spending", "Derivation path: m/44'/60'/0'/0/2"]
+              timeout: 60000

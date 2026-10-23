@@ -18,7 +18,7 @@ public:
     QString administer(QString paramsJson) override;
     bool identifyWallet(QString serial) override;
     bool verifyWallet(QString walletId, QString serial) override;
-    bool addAccount(QString walletId, QString family, QString chain, int account, QString label, QString pin, QString connectionId) override;
+    bool addAccounts(QString walletId, QString connectionId, QString requestJson, QString pin) override;
     bool renameAccount(QString walletId, QString accountId, QString name) override;
     bool removeWalletAccount(QString walletId, QString accountId) override;
     bool offer(QString reader, QString familiesJson, QString chain, int account, QString label,
@@ -43,5 +43,6 @@ private:
 
     QString m_job;
     bool m_shellJob = false;
+    bool m_preview = false;
     QTimer m_poll;
 };

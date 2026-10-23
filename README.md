@@ -6,9 +6,12 @@ install this UI and both backend modules, and remove the old Shell **UI plugin**
 application's plugins directory. Keep its backend and module data: existing USB accounts
 are loaded without importing them again. QR-based signing is outside this app.
 
-The home screen lists wallets and their public accounts. **Add accounts** chooses Ethereum
-or Bitcoin (native SegWit or, on supported cards, Taproot), an optional account name, and an
-index. The next unused index is suggested; advanced controls allow a different index.
+The home screen lists wallets and their public accounts. **Add accounts** works like the
+keystore's: choose Ethereum or Bitcoin (native SegWit or, on supported cards, Taproot, and the
+network), and the card shows five accounts from the **First index**, the last part of the path,
+with Previous and Next. Tick up to 20, across account types, then name each one or leave it
+unnamed. The card's PIN is asked once, to show the accounts: the picks are kept from what it
+showed, without asking the card again. A Shell asks to confirm each address it shows.
 Ethereum uses `m/44'/60'/0'/0/i`; Bitcoin uses `m/84'/coin'/i'` or `m/86'/coin'/i'`.
 Only public account material is saved. Signing stays with each transport's existing signer.
 
