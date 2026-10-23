@@ -106,7 +106,7 @@ Item {
                                     text: root.connectedDevices(group.modelData).map(function(c) { return (c.transport === "shell" ? "Shell USB · " + root.shortId(c.serial) : "Card reader · " + root.shortId(c.id)) + (c.transport === "shell" ? (c.verification === "verified" ? " · USB connected; wallet verified" : c.verification === "different" ? " · USB connected; different wallet" : " · USB connected; verify on first use") : " · Connected") }).join("  /  ") || "No device connected"
                                 }
                             }
-                            LogosButton { objectName: "addAccounts_" + group.index; text: "Add accounts"; enabled: group.modelData.connected && !root.working && !group.modelData.legacy; onClicked: root.openAdd(group.modelData) }
+                            LogosButton { objectName: "addAccounts_" + group.index; text: "Add accounts"; enabled: group.modelData.connected && !root.working && !group.modelData.legacy && group.modelData.locked !== true; onClicked: root.openAdd(group.modelData) }
                             LogosButton { objectName: "manageWallet_" + group.index; text: "Manage…"; enabled: !root.working && !group.modelData.pending; onClicked: { root.selectWallet(group.modelData); manageSheet.open() } }
                         }
                         LogosText { visible: (group.modelData.aliases || []).filter(function(n) { return n !== group.modelData.name }).length > 0; text: "Also named: " + (group.modelData.aliases || []).filter(function(n) { return n !== group.modelData.name }).join(" · "); textFormat: Text.PlainText; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.textSecondary }
