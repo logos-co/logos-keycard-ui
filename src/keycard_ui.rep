@@ -22,7 +22,10 @@ class KeycardUi
 
     PROP(QString shellDevicesJson="[]" READONLY)
     PROP(QString shellGroupsJson="[]" READONLY)
-    SLOT(bool addAccount(QString walletId, QString family, QString chain, int account, QString label, QString pin, QString connectionId))
+    // Show or add a wallet's accounts through the connection it names: `requestJson` is
+    // `{ entries: [{ family, account, chain?, label? }], preview?, fromPreview? }`. A preview's
+    // accounts carry their address `preview`; `fromPreview` keeps picks without the device or PIN.
+    SLOT(bool addAccounts(QString walletId, QString connectionId, QString requestJson, QString pin))
     SLOT(bool renameAccount(QString walletId, QString accountId, QString name))
     SLOT(bool removeWalletAccount(QString walletId, QString accountId))
     SLOT(bool refresh())

@@ -6,9 +6,12 @@ install this UI and both backend modules, and remove the old Shell **UI plugin**
 application's plugins directory. Keep its backend and module data: existing USB accounts
 are loaded without importing them again. QR-based signing is outside this app.
 
-The home screen lists wallets and their public accounts. **Add accounts** chooses Ethereum
-or Bitcoin (native SegWit or, on supported cards, Taproot), an optional account name, and an
-index. The next unused index is suggested; advanced controls allow a different index.
+The home screen lists wallets and their public accounts. **Add accounts** works like the
+keystore's: choose Ethereum or Bitcoin (native SegWit or, on supported cards, Taproot, and the
+network), and the card shows five accounts from the **First index**, the last part of the path,
+with Previous and Next. Tick up to 20, across account types, then name each one or leave it
+unnamed. The card's PIN is asked once, to show the accounts: the picks are kept from what it
+showed, without asking the card again. A Shell asks to confirm each address it shows.
 Ethereum uses `m/44'/60'/0'/0/i`; Bitcoin uses `m/84'/coin'/i'` or `m/86'/coin'/i'`.
 Only public account material is saved. Signing stays with each transport's existing signer.
 
@@ -32,6 +35,10 @@ its reader cards must be disconnected first. Pairing and trust remain physical-c
 The signer modules retain their own account offers: merging the display does not silently
 export extra accounts or authorize signing. Shell signing verifies the root again and can
 use another previously identified Shell connection for the same wallet.
+
+Each wallet's accounts are sealed under a key the Signer app releases once the person unlocks
+that wallet there. Until then the wallet shows as **Locked**, with no accounts, and its **Unlock**
+raises `wallets.unlock` to open the Signer app.
 
 Unsigned applet 4.0 cards still require explicit review of their identity and the existing
 counterfeit warning before they can be trusted. A card used in a reader has no trusted display:
