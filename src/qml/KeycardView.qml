@@ -287,7 +287,7 @@ Item {
                         LogosTextField { id: pinField; objectName: "offerPin"; visible: !root.shell && !root.needsPairing; Layout.fillWidth: true; enabled: !root.working && !addSheet.submitting; echoMode: TextInput.Password; placeholderText: "Card PIN"; validator: RegularExpressionValidator { regularExpression: /[0-9]{0,6}/ } }
                         LogosButton {
                             objectName: "showAccounts"; text: "Show accounts"
-                            enabled: addSheet.canAsk && firstIndex.acceptableInput
+                            enabled: addSheet.canAsk && firstIndex.textInput.acceptableInput
                             onClicked: addSheet.show(Number(firstIndex.text))
                         }
                         Repeater {
