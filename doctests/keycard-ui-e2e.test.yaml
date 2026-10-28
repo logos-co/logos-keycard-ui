@@ -37,8 +37,8 @@ sections:
       - title: "The Keycard module and its simulator"
         run: |
           set -eu
-          nix build 'github:logos-co/logos-keycard-module/92eabb281518f0d80c7e06794aab7f54713011ac#install' --no-write-lock-file -o result-module
-          nix build 'github:logos-co/logos-keycard-module/92eabb281518f0d80c7e06794aab7f54713011ac#simulator' --no-write-lock-file -o result-simulator
+          nix build 'github:logos-co/logos-keycard-module/4030a200cc535980a786d822dd3e2a4f7643b1cf#install' --no-write-lock-file -o result-module
+          nix build 'github:logos-co/logos-keycard-module/4030a200cc535980a786d822dd3e2a4f7643b1cf#simulator' --no-write-lock-file -o result-simulator
         code_block: |
           nix build 'github:logos-co/logos-keycard-module#install' -o result-module
           nix build 'github:logos-co/logos-keycard-module#simulator' -o result-simulator
@@ -49,7 +49,7 @@ sections:
         run: |
           set -eu
           mkdir -p tree/modules
-          nix build 'github:logos-co/logos-keycard-shell-module/5d6e21319029809101c1c8ceac19abd061eb1943#install' --no-write-lock-file -o result-shell
+          nix build 'github:logos-co/logos-keycard-shell-module/b32ab3b06031b768b9846a13cbacd48b2ca91994#install' --no-write-lock-file -o result-shell
           cp -rL result-shell/modules/* tree/modules/
           cp -rL result-module/modules/* tree/modules/
           chmod -R u+w tree
