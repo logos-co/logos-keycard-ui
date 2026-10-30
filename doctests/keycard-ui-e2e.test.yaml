@@ -131,3 +131,115 @@ sections:
               action: wait_for
               texts: ["Spending", "Derivation path: m/44'/60'/0'/0/2"]
               timeout: 60000
+
+  - title: "A card Keycard didn't sign"
+    step: true
+    text: |
+      A 4.0 card whose identity no trusted CA signed is refused: one a person loaded the applet onto,
+      or a counterfeit. The app offers to review it and shows the card's identity key. The person may
+      trust that one card once they confirm they loaded the applet themselves, and stop trusting it.
+    steps:
+      - title: "Swap in a card another CA signed"
+        run: "./result-simulator/bin/keycard-simulator-setup 127.0.0.1:47335 --fresh --untrusted"
+        code_block: "keycard-simulator-setup 127.0.0.1:47335 --fresh --untrusted"
+        expect_contains:
+          - "ready 127.0.0.1:47335"
+      - title: "Trust it, then stop trusting it"
+        ui_test:
+          launch: "env KEYCARD_SIMULATOR=127.0.0.1:47335 KEYCARD_SHELL_EMULATOR=127.0.0.1:1 QT_FORCE_STDERR_LOGGING=1 QML_INSPECTOR_PORT=3768 ./result-basecamp/bin/LogosBasecamp --module ./result-ui --modules-dir ./tree/modules --user-dir ./userdir"
+          qt_mcp: "result-mcp"
+          launch_timeout: 600
+          tests:
+            - name: "The card is refused, with a way to review it"
+              action: expect_property
+              find_by: "objectName"
+              find_value: "reviewUnverified"
+              property: "visible"
+              value: true
+              timeout: 60000
+            - name: "Review it"
+              action: click_object
+              find_value: "reviewUnverified"
+            - name: "The review opens"
+              action: expect_property
+              find_by: "objectName"
+              find_value: "trustDialog"
+              property: "opened"
+              value: true
+              timeout: 10000
+            - name: "The warning and the card's identity"
+              action: expect_property
+              find_by: "objectName"
+              find_value: "untrustedPanel"
+              property: "visible"
+              value: true
+              screenshot: "keycard-ui-untrusted.png"
+            - name: "Trusting waits for the person's confirmation"
+              action: expect_property
+              find_by: "objectName"
+              find_value: "trustButton"
+              property: "enabled"
+              value: false
+            - name: "They confirm they loaded the applet"
+              action: click_object
+              find_value: "trustOwnCard"
+            - name: "Trust it"
+              action: click_object
+              find_value: "trustButton"
+            - name: "The review closes"
+              action: expect_property
+              find_by: "objectName"
+              find_value: "trustDialog"
+              property: "visible"
+              value: false
+              timeout: 10000
+            - name: "The app says the card is trusted"
+              action: expect_property
+              find_by: "objectName"
+              find_value: "keycardNotice"
+              property: "text"
+              value: "Trusted: this card is used though Keycard didn't sign it."
+              timeout: 10000
+              screenshot: "keycard-ui-trusted.png"
+            - name: "Nothing is left to review"
+              action: expect_property
+              find_by: "objectName"
+              find_value: "reviewUnverified"
+              property: "visible"
+              value: false
+            - name: "Manage its wallet"
+              action: click_object
+              find_value: "manageWallet_0"
+            - name: "Its settings open"
+              action: expect_property
+              find_by: "objectName"
+              find_value: "manageWalletDialog"
+              property: "opened"
+              value: true
+              timeout: 10000
+            - name: "Stop trusting it"
+              action: click_object
+              find_value: "stopTrusting"
+            - name: "Refused again"
+              action: expect_property
+              find_by: "objectName"
+              find_value: "reviewUnverified"
+              property: "visible"
+              value: true
+              timeout: 10000
+            - name: "The app says so"
+              action: expect_property
+              find_by: "objectName"
+              find_value: "keycardNotice"
+              property: "text"
+              value: "No longer trusted: this card is refused again."
+
+  - title: "Stop"
+    step: true
+    steps:
+      - title: "Stop the simulated Keycard"
+        run: |
+          kill $(cat card.pid) || true
+          echo stopped
+        expect_contains:
+          - "stopped"
