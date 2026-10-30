@@ -93,6 +93,12 @@ void wipe(QString &s)
 
 } // namespace
 
+void KeycardUiBackend::startAction()
+{
+    setLastError(QString());
+    setNoticeText(QString());
+}
+
 bool KeycardUiBackend::ok(const QJsonObject &reply, const QString &context)
 {
     if (reply.value(QStringLiteral("ok")).toBool())
@@ -198,7 +204,7 @@ bool KeycardUiBackend::offer(QString reader, QString familiesJson, QString chain
 bool KeycardUiBackend::offerChecked(QString reader, QString familiesJson, QString chain, int account,
                                     QString label, QString pin, QString expectedCard)
 {
-    setLastError(QString());
+    startAction();
     if (!m_job.isEmpty()) { wipe(pin); setLastError("An account is already being added."); return false; }
     m_shellJob = false;
     QJsonObject p;
@@ -265,7 +271,7 @@ void KeycardUiBackend::poll()
 
 bool KeycardUiBackend::removeAccount(QString id)
 {
-    setLastError(QString());
+    startAction();
     const bool removed = ok(parseObject(modules().keycard_module.remove_account(id)),
                             QStringLiteral("remove"));
     refresh();
@@ -274,7 +280,7 @@ bool KeycardUiBackend::removeAccount(QString id)
 
 bool KeycardUiBackend::pair(QString reader, QString pairingPassword)
 {
-    setLastError(QString());
+    startAction();
     QJsonObject p;
     if (!reader.isEmpty())
         p.insert(QStringLiteral("reader"), reader);
@@ -292,7 +298,7 @@ bool KeycardUiBackend::pair(QString reader, QString pairingPassword)
 
 bool KeycardUiBackend::changePin(QString reader, QString pin, QString newPin)
 {
-    setLastError(QString());
+    startAction();
     QJsonObject p;
     if (!reader.isEmpty())
         p.insert(QStringLiteral("reader"), reader);
@@ -313,7 +319,7 @@ bool KeycardUiBackend::changePin(QString reader, QString pin, QString newPin)
 
 bool KeycardUiBackend::unblockPin(QString reader, QString puk, QString newPin)
 {
-    setLastError(QString());
+    startAction();
     QJsonObject p;
     if (!reader.isEmpty())
         p.insert(QStringLiteral("reader"), reader);
@@ -334,7 +340,7 @@ bool KeycardUiBackend::unblockPin(QString reader, QString puk, QString newPin)
 
 bool KeycardUiBackend::trustCard(QString reader, QString identity)
 {
-    setLastError(QString());
+    startAction();
     QJsonObject p;
     if (!reader.isEmpty())
         p.insert(QStringLiteral("reader"), reader);
@@ -349,7 +355,7 @@ bool KeycardUiBackend::trustCard(QString reader, QString identity)
 
 bool KeycardUiBackend::forgetCard(QString identity)
 {
-    setLastError(QString());
+    startAction();
     const bool forgot =
         ok(parseObject(modules().keycard_module.forget_card(identity)), QStringLiteral("forget"));
     if (forgot)
@@ -360,7 +366,7 @@ bool KeycardUiBackend::forgetCard(QString identity)
 
 bool KeycardUiBackend::renameCard(QString id, QString name)
 {
-    setLastError(QString()); bool result = true;
+    startAction(); bool result = true;
     if (containsGroup(cardGroupsJson(), id)) result &= ok(parseObject(modules().keycard_module.rename_card(id, name)), "Rename wallet");
     if (containsGroup(shellGroupsJson(), id)) result &= ok(parseObject(modules().keycard_shell_module.rename_wallet(id, name)), "Rename wallet");
     refresh(); return result;
@@ -368,7 +374,7 @@ bool KeycardUiBackend::renameCard(QString id, QString name)
 
 bool KeycardUiBackend::forgetSavedCard(QString id)
 {
-    setLastError(QString()); refresh();
+    startAction(); refresh();
     if (findGroup(cardGroupsJson(), id).value("connected").toBool()) {
         setLastError("Remove this wallet's Keycards from their readers before forgetting it."); return false;
     }
@@ -380,7 +386,7 @@ bool KeycardUiBackend::forgetSavedCard(QString id)
 
 bool KeycardUiBackend::identifyWallet(QString serial)
 {
-    setLastError(QString());
+    startAction();
     if (!m_job.isEmpty()) { setLastError("A wallet operation is already in progress."); return false; }
     const auto reply = parseObject(modules().keycard_shell_module.add_accounts(text(QJsonObject{
         {"families", QJsonArray{}}, {"serial", serial}, {"identify", true}})));
@@ -391,7 +397,7 @@ bool KeycardUiBackend::identifyWallet(QString serial)
 
 bool KeycardUiBackend::verifyWallet(QString walletId, QString serial)
 {
-    setLastError(QString());
+    startAction();
     if (!m_job.isEmpty()) { setLastError("A wallet operation is already in progress."); return false; }
     if (!walletId.startsWith("seed:") || serial.isEmpty()) { setLastError("Choose an identified wallet and a connected Shell."); return false; }
     const auto reply = parseObject(modules().keycard_shell_module.add_accounts(text(QJsonObject{
@@ -404,7 +410,7 @@ bool KeycardUiBackend::verifyWallet(QString walletId, QString serial)
 // The UI supplies an explicit wallet, never whichever device happens to be first.
 bool KeycardUiBackend::addAccounts(QString walletId, QString connectionId, QString requestJson, QString pin)
 {
-    setLastError(QString());
+    startAction();
     if (!m_job.isEmpty()) { wipe(pin); setLastError("An account is already being added."); return false; }
     QJsonObject params = parseObject(requestJson);
     const bool preview = params.value("preview").toBool();
@@ -458,7 +464,7 @@ bool KeycardUiBackend::addAccounts(QString walletId, QString connectionId, QStri
 
 bool KeycardUiBackend::removeWalletAccount(QString walletId, QString accountId)
 {
-    setLastError(QString()); bool result = true;
+    startAction(); bool result = true;
     const auto group = findGroup(walletsJson(), walletId);
     for (auto v : group.value("accounts").toArray()) {
         const auto a = v.toObject(); if (a.value("id").toString() != accountId) continue;
@@ -473,7 +479,7 @@ bool KeycardUiBackend::removeWalletAccount(QString walletId, QString accountId)
 
 bool KeycardUiBackend::renameAccount(QString walletId, QString accountId, QString name)
 {
-    setLastError(QString()); bool result = true;
+    startAction(); bool result = true;
     const auto group = findGroup(walletsJson(), walletId);
     for (auto v : group.value("accounts").toArray()) {
         const auto a = v.toObject(); if (a.value("id").toString() != accountId) continue;

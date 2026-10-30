@@ -37,6 +37,8 @@ protected:
 
 private:
     bool offerChecked(QString reader, QString families, QString chain, int account, QString label, QString pin, QString expectedCard);
+    /// A new action: the last one's error and notice no longer apply.
+    void startAction();
     /// Surface the module's refusal and report whether the call succeeded.
     bool ok(const QJsonObject &reply, const QString &context);
     void poll();

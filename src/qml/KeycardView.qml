@@ -84,7 +84,8 @@ Item {
                 text: "Connect a Keycard reader or a Keycard Shell over USB. Your keys stay on the card."
             }
             LogosText { visible: root.ready && root.wallets.length === 0; text: "Connect a Keycard to add your first wallet." }
-            LogosButton { visible: root.unsigned.length > 0; text: "Review unverified Keycard…"; onClicked: trustSheet.open() }
+            LogosButton { objectName: "reviewUnverified"; visible: root.unsigned.length > 0; text: "Review unverified Keycard…"; onClicked: trustSheet.open() }
+            LogosText { objectName: "keycardNotice"; visible: text !== ""; Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText; text: root.ready ? root.backend.noticeText : "" }
             Repeater {
                 objectName: "cardGroupRepeater"; model: root.wallets
                 delegate: Frame {
@@ -466,7 +467,7 @@ Item {
                         onClicked: { verifySheet.walletId = root.selectedWalletId; verifySheet.open() }
                     }
                     LogosText { visible: !!root.card && root.card.trustedByPerson === true; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.error; text: "You trusted this card although Keycard did not certify it." }
-                    LogosButton { visible: !!root.card && root.card.trustedByPerson === true; text: "Stop trusting"; onClicked: logos.watch(root.backend.forgetCard(root.card.identity), function(ok) { if(ok) manageSheet.close() }) }
+                    LogosButton { objectName: "stopTrusting"; visible: !!root.card && root.card.trustedByPerson === true; text: "Stop trusting"; onClicked: logos.watch(root.backend.forgetCard(root.card.identity), function(ok) { if(ok) manageSheet.close() }) }
                     Repeater {
                         model: (root.wallet && root.wallet.accounts) || []
                         delegate: RowLayout {
@@ -528,8 +529,13 @@ Item {
             }
         }
     }
+    // Trusted, or taken out of its reader: nothing is left to review.
+    Connections {
+        target: root
+        function onUnsignedChanged() { if (root.unsigned.length === 0) trustSheet.close() }
+    }
     LogosDialog {
-        id: trustSheet; title: "Review Keycard identity"
+        id: trustSheet; objectName: "trustDialog"; title: "Review Keycard identity"
         anchors.centerIn: parent; width: Math.min(parent.width-40, 680)
         contentItem: ColumnLayout {
             Rectangle {
@@ -584,7 +590,7 @@ Item {
                         enabled: root.ready && ownCard.checked && root.unsigned.length > 0
                         onClicked: logos.watch(root.backend.trustCard(root.unsigned[0].reader,
                                                                       root.unsigned[0].untrusted),
-                                               function (trusted) { ownCard.checked = false })
+                                               function (trusted) { ownCard.checked = false; if (trusted) trustSheet.close() })
                     }
                 }
             }
