@@ -40,6 +40,9 @@ Each wallet's accounts are sealed under a key the Signer app releases once the p
 that wallet there. Until then the wallet shows as **Locked**, with no accounts, and its **Unlock**
 raises `wallets.unlock` to open the Signer app.
 
+It also answers `evm.accounts.manage`, so another app's **Manage accounts** can open it as well as
+the keystore's app.
+
 Unsigned applet 4.0 cards still require explicit review of their identity and the existing
 counterfeit warning before they can be trusted. A card used in a reader has no trusted display:
 the transaction must be checked in the signer app before its PIN is entered.

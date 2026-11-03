@@ -17,6 +17,11 @@ Item {
         function onViewModuleReadyChanged(name, isReady) {
             if (name === "keycard_ui") root.ready = isReady && root.backend !== null
         }
+        // Opened to manage accounts: being here answers it, and `handoff` keeps the person here.
+        function onIntentRequested(requestId, intent, params, requesterName) {
+            if (intent !== "evm.accounts.manage") return
+            logos.respond(requestId, true, ({}), "")
+        }
     }
     function j(t, fb) { try { return JSON.parse(t || fb) } catch(e) { return JSON.parse(fb) } }
     readonly property var cards: ready ? j(backend.cardsJson, "[]") : []
