@@ -16,6 +16,12 @@
       "cardinality": "single"
     }
   ],
+  "provides": [
+    {
+      "intent": "evm.accounts.manage",
+      "handoff": true
+    }
+  ],
   "dependencies": [
     {
       "name": "keycard_module",
