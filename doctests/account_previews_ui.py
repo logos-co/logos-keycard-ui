@@ -40,9 +40,9 @@ def pick(first, picks, pin=True):
  for n,(_,name) in enumerate(picks): setp('addAccountName_'+str(n),'text',name)
  click('keepAccounts');wait('!opened','addAccountsDialog')
 def rename_account(wallet, label):
- click('manageWallet_'+str(wallet));click('renameAccount_0')
+ click('wallet%d_Account_0_Action_rename'%wallet)
  setp('accountName','text',label);click('saveAccountName')
- wait('!opened','renameAccountDialog');close('manageWalletDialog')
+ wait('!opened','renameAccountDialog')
 
 wait('ready && cards.length === 1')
 assert value('cards[0].reader') == 'Keycard simulator'
@@ -60,10 +60,12 @@ index=value('wallets.findIndex(function(g){return g.id === '+json.dumps(wallet_i
 rows=value('wallets['+str(index)+'].accounts')
 assert {'evm','bitcoin','bitcoin_taproot'}.issubset({a['family'] for a in rows})
 expected={'bitcoin':'bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu','bitcoin_taproot':'bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr'}
-for i,a in enumerate(rows):
- assert a['path'] in value('text','accountPath_'+str(index)+'_'+str(i))
- assert a['preview']['address'] == value('value','accountCopy_'+str(index)+'_'+str(i))
- assert a['preview']['address'][:8] in value('text','accountLine_'+str(index)+'_'+str(i))
+# The card orders its rows (Ethereum, Bitcoin, test networks), so each is matched by its path.
+for i in range(len(rows)):
+ row='wallet%d_Account_%d_'%(index,i)
+ a=next(r for r in rows if r['path']==value('text',row+'Path'))
+ assert a['preview']['address'] == value('value',row+'Copy')
+ assert a['preview']['address'][:6] in value('text',row+'Address')
  if a.get('label') == run_label+a['family'] and a['family'] in expected:
   assert a['preview']['address']==expected[a['family']]
   assert a['preview']['path']==a['path']+'/0/0'

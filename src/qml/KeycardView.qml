@@ -3,6 +3,7 @@ import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import Logos.Controls
 import Logos.Theme
+import "accountkit" as Accounts
 
 Item {
     id: root
@@ -53,7 +54,6 @@ Item {
 
     function cardId(c) { return c.secureChannel === 2 ? "identity:" + c.identity : "instance:" + c.instanceUid }
     function shortId(id) { var s = (id || "").split(":").pop(); return s.length > 16 ? s.slice(0,8) + "…" + s.slice(-8) : s }
-    function shortAddress(a) { return a ? a.slice(0,8) + "…" + a.slice(-6) : "" }
     // A wallet's accounts are sealed until the person unlocks it there.
     function unlockInSigner() {
         logos.request("wallets.unlock", ({}), function (res) { if (res.ok) root.backend.refresh() })
@@ -62,6 +62,44 @@ Item {
         if (!g) return "Keycard"
         if (g.id.indexOf("seed:") === 0) return g.name || "Keycard wallet " + shortId(g.id)
         return g.name || (g.legacy ? "Unidentified card" : g.transport === "shell" ? "Keycard via Shell" + (g.fingerprint ? " · " + g.fingerprint : "") : "Keycard " + shortId(g.id))
+    }
+    // A card's rows, as the kit takes them: an EVM address, or a Bitcoin first receiving address.
+    function rowsOf(g) {
+        return ((g && g.accounts) || []).map(function(a) {
+            var shown = (a.preview || {}).address || a.address || ""
+            var aliases = a.aliases || []
+            return { key: a.id, id: a.id, family: a.family, chain: a.chain, path: a.path,
+                     label: aliases.length > 1 ? aliases.join(" · ") : a.label || "", ownLabel: a.label || "",
+                     address: a.family === "evm" ? shown : "", firstAddress: a.family === "evm" ? "" : shown,
+                     addressNote: (a.preview || {}).error || "Address unavailable" }
+        })
+    }
+    // The master fingerprint its accounts carry: the Wallet ID the Signer and Keys apps show too.
+    function fingerprintOf(g) {
+        var a = ((g && g.accounts) || []).find(function(a) { return !!a.fingerprint })
+        return a ? a.fingerprint : ""
+    }
+    function aliasesOf(g) { return (g.aliases || []).filter(function(n) { return n !== g.name }) }
+    function cardFor(c) { return root.cards.find(function(k) { return cardId(k) === c.id }) || null }
+    // Each device in use, a card trusted without Keycard's certificate, and an older Shell wallet.
+    function stripsOf(g) {
+        var out = [], trusted = 0
+        connectedDevices(g).forEach(function(c, i) {
+            var card = c.transport === "shell" ? null : cardFor(c)
+            var text = c.transport === "shell"
+                ? "Shell USB · " + shortId(c.serial) + (c.verification === "verified" ? " · USB connected; wallet verified" : c.verification === "different" ? " · USB connected; different wallet" : " · USB connected; verify on first use")
+                : "Card reader · card " + shortId(c.id) + " · Connected"
+            out.push({ id: "device" + i, text: text, card: card,
+                       actions: card ? [{ id: "admin", label: "Card administration…", enabled: !root.working }] : [] })
+            if (card && card.trustedByPerson === true)
+                out.push({ id: trusted++ ? "trust" + trusted : "trust", text: "You trusted this card although Keycard did not certify it.",
+                           warn: true, card: card, actions: [{ id: "stoptrust", label: "Stop trusting" }] })
+        })
+        if (out.length === 0) out.push({ id: "nodevice", text: "No device connected" })
+        if (g.transport === "shell" && g.id.indexOf("seed:") !== 0)
+            out.push({ id: "identify", text: "Identify this Shell wallet once to link its saved accounts.",
+                       actions: [{ id: "identify", label: "Identify wallet…", enabled: g.connected && !root.working }] })
+        return out
     }
     function familyWords(f) { return f === "evm" ? "Ethereum" : f === "bitcoin" ? "Bitcoin · Native SegWit" : "Bitcoin · Taproot" }
     function selectWallet(g) { selectedWalletId = g.id; selectedConnectionId = ""; pendingWallet = g.pending ? g : null }
@@ -78,7 +116,7 @@ Item {
             RowLayout {
                 Layout.fillWidth: true
                 LogosText { text: "Keycard wallets"; font.pixelSize: 22 }
-                LogosInfoButton { objectName: "keycardWalletInfo"; title: "One wallet per seed"; Accessible.name: "Help: One wallet per seed"; text: "Wallets are identified by a hash of the full master public key. Cards holding the same seed share one wallet, across readers and USB Shells. A different recovery passphrase creates a different wallet. Identify an older Shell wallet once and confirm its public-key requests to link its saved accounts. Previous wallet and account names are retained. A Shell connection means USB is present, not that this seed is inside. Any connected Shell can be used. The first use of each USB connection asks you to confirm the master public key. Subsequent signatures reuse that verification until the Shell disconnects or the app restarts. Use Manage → Verify wallet to request a fresh check at any time. Every returned signature is checked against the selected account. If the card has a different seed, the result is rejected; insert the correct card and retry. Names are saved on this computer." }
+                LogosInfoButton { objectName: "keycardWalletInfo"; title: "One wallet per seed"; Accessible.name: "Help: One wallet per seed"; text: "Wallets are identified by a hash of the full master public key. Cards holding the same seed share one wallet, across readers and USB Shells. A different recovery passphrase creates a different wallet. Identify an older Shell wallet once and confirm its public-key requests to link its saved accounts. Previous wallet and account names are retained. A Shell connection means USB is present, not that this seed is inside. Any connected Shell can be used. The first use of each USB connection asks you to confirm the master public key. Subsequent signatures reuse that verification until the Shell disconnects or the app restarts. Use Verify wallet… on the wallet to request a fresh check at any time. Every returned signature is checked against the selected account. If the card has a different seed, the result is rejected; insert the correct card and retry. Names are saved on this computer." }
                 Item { Layout.fillWidth: true }
                 LogosButton { objectName: "cardAdministration"; text: "Card administration…"; enabled: root.ready && !root.working; onClicked: adminSheet.open() }
                 LogosButton { objectName: "connectShell"; text: "Open wallet via USB…"; visible: root.shellDevices.length > 0; enabled: !root.working; onClicked: shellSheet.open() }
@@ -93,59 +131,47 @@ Item {
             LogosText { objectName: "keycardNotice"; visible: text !== ""; Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText; text: root.ready ? root.backend.noticeText : "" }
             Repeater {
                 objectName: "cardGroupRepeater"; model: root.wallets
-                delegate: Frame {
+                delegate: Accounts.WalletCard {
                     id: group
                     required property var modelData
                     required property int index
+                    readonly property var g: modelData
                     Layout.fillWidth: true
-                    padding: Theme.spacing.medium
-                    background: Rectangle { radius: 6; color: Theme.palette.backgroundMuted }
-                    contentItem: ColumnLayout {
-                        spacing: Theme.spacing.small
-                        RowLayout {
-                            Layout.fillWidth: true
-                            ColumnLayout {
-                                Layout.fillWidth: true
-                                LogosText { objectName: "cardName_" + group.index; text: root.groupName(group.modelData); textFormat: Text.PlainText; Layout.fillWidth: true; elide: Text.ElideRight; font.bold: true }
-                                LogosText {
-                                    Layout.fillWidth: true; elide: Text.ElideRight; color: Theme.palette.textSecondary; textFormat: Text.PlainText
-                                    text: root.connectedDevices(group.modelData).map(function(c) { return (c.transport === "shell" ? "Shell USB · " + root.shortId(c.serial) : "Card reader · " + root.shortId(c.id)) + (c.transport === "shell" ? (c.verification === "verified" ? " · USB connected; wallet verified" : c.verification === "different" ? " · USB connected; different wallet" : " · USB connected; verify on first use") : " · Connected") }).join("  /  ") || "No device connected"
-                                }
-                            }
-                            LogosButton { objectName: "addAccounts_" + group.index; text: "Add accounts"; enabled: group.modelData.connected && !root.working && !group.modelData.legacy && group.modelData.locked !== true; onClicked: root.openAdd(group.modelData) }
-                            LogosButton { objectName: "manageWallet_" + group.index; text: "Manage…"; enabled: !root.working && !group.modelData.pending; onClicked: { root.selectWallet(group.modelData); manageSheet.open() } }
-                        }
-                        LogosText { visible: (group.modelData.aliases || []).filter(function(n) { return n !== group.modelData.name }).length > 0; text: "Also named: " + (group.modelData.aliases || []).filter(function(n) { return n !== group.modelData.name }).join(" · "); textFormat: Text.PlainText; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.textSecondary }
-                        LogosButton { text: "Identify wallet…"; visible: group.modelData.transport === "shell" && group.modelData.id.indexOf("seed:") !== 0; enabled: group.modelData.connected && !root.working; onClicked: { root.selectWallet(group.modelData); identifySheet.open() } }
-                        RowLayout {
-                            visible: group.modelData.locked === true
-                            Layout.fillWidth: true
-                            LogosText { objectName: "walletLocked_" + group.index; Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText
-                                        color: Theme.palette.textSecondary
-                                        text: "Locked · its accounts show once you unlock it in the Signer app." }
-                            LogosButton { objectName: "unlockWallet_" + group.index; text: "Unlock"; enabled: root.ready; onClicked: root.unlockInSigner() }
-                        }
-                        LogosText { visible: group.modelData.accounts.length === 0 && group.modelData.locked !== true; text: "No accounts yet."; color: Theme.palette.textSecondary }
-                        Repeater {
-                            model: group.modelData.accounts
-                            delegate: RowLayout {
-                                required property var modelData
-                                required property int index
-                                Layout.fillWidth: true
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    LogosText { text: (modelData.aliases || []).length > 1 ? modelData.aliases.join(" · ") : modelData.label || root.familyWords(modelData.family); textFormat: Text.PlainText; Layout.fillWidth: true; elide: Text.ElideRight }
-                                    LogosText { objectName: "accountPath_" + group.index + "_" + index; text: "Derivation path: " + (modelData.path || "Unavailable"); textFormat: Text.PlainText; color: Theme.palette.textSecondary }
-                                    RowLayout {
-                                        readonly property string address: (modelData.preview || {}).address || modelData.address || ""
-                                        LogosText { text: modelData.family === "evm" ? "Address:" : modelData.chain === "test" ? "First receiving address (testnet/signet, 0/0):" : "First receiving address (0/0):"; color: Theme.palette.textSecondary }
-                                        LogosText { objectName: "accountLine_" + group.index + "_" + index; text: parent.address ? root.shortAddress(parent.address) : (modelData.preview || {}).error || "Address unavailable"; textFormat: Text.PlainText; color: Theme.palette.textSecondary }
-                                        LogosCopyButton { objectName: "accountCopy_" + group.index + "_" + index; visible: !!parent.address; value: parent.address }
-                                    }
-                                }
-                                LogosText { text: root.familyWords(modelData.family) + (modelData.chain === "test" ? " · Test" : ""); color: Theme.palette.textSecondary }
-                            }
-                        }
+                    namePrefix: "wallet" + index + "_"
+                    title: root.groupName(g)
+                    fingerprint: root.fingerprintOf(g)
+                    lines: root.aliasesOf(g).length ? ["Also named: " + root.aliasesOf(g).join(" · ")] : []
+                    strips: root.stripsOf(g)
+                    locked: g.locked === true
+                    lockedActions: [{ id: "unlock", label: "Unlock", enabled: root.ready }]
+                    accounts: root.rowsOf(g)
+                    actions: [{ id: "add", label: "Add accounts", enabled: g.connected && !root.working && !g.legacy && g.locked !== true }]
+                    accountActions: [{ id: "rename", label: "Rename…", enabled: !root.working },
+                                     { id: "remove", label: "Remove", enabled: !root.working,
+                                       tip: "Hides it from apps, including for other cards sharing the same recovery phrase. Nothing on the card changes." }]
+                    rightActions: g.legacy || g.pending ? [] : [{ id: "rename", label: "Rename…" }]
+                                  .concat(g.id.indexOf("seed:") === 0 && root.shellDevices.length > 0 ? [{ id: "verify", label: "Verify wallet…", enabled: !root.working }] : [])
+                                  .concat([{ id: "forget", label: "Forget wallet…" }])
+                    onAction: function (id) {
+                        if (id === "add") root.openAdd(group.g)
+                        else if (id === "unlock") root.unlockInSigner()
+                        else if (id === "rename") { root.selectWallet(group.g); renameWalletSheet.open() }
+                        else if (id === "verify") { verifySheet.walletId = group.g.id; root.selectWallet(group.g); verifySheet.open() }
+                        else if (id === "forget") { forgetSheet.cardId = group.g.id; forgetSheet.cardName = root.groupName(group.g); forgetSheet.open() }
+                    }
+                    onStripAction: function (i, id) {
+                        var strip = group.strips[i]
+                        if (id === "admin") { adminSheet.preferredCard = strip.card.adminId; adminSheet.open() }
+                        else if (id === "stoptrust") logos.watch(root.backend.forgetCard(strip.card.identity), function(ok) {})
+                        else if (id === "identify") { root.selectWallet(group.g); identifySheet.open() }
+                    }
+                    onAccountAction: function (id, entry) {
+                        if (id === "remove") { logos.watch(root.backend.removeWalletAccount(group.g.id, entry.id), function(ok) {}); return }
+                        renameAccountSheet.walletId = group.g.id
+                        renameAccountSheet.accountId = entry.id
+                        renameAccountSheet.accountLabel = entry.ownLabel
+                        renameAccountSheet.accountDetails = entry.address || entry.firstAddress || entry.path || entry.id
+                        renameAccountSheet.open()
                     }
                 }
             }
@@ -450,55 +476,31 @@ Item {
         }
     }
     LogosDialog {
-        id: manageSheet; objectName: "manageWalletDialog"; title: "Manage · " + root.groupName(root.wallet)
-        anchors.centerIn: parent; width: Math.min(parent.width-40, 620); height: Math.min(parent.height-40, 620)
-        onOpened: { walletName.text = root.wallet ? root.wallet.name || "" : "" }
+        id: renameWalletSheet; objectName: "renameWalletDialog"; title: "Rename wallet"
+        anchors.centerIn: parent; width: Math.min(parent.width - 40, 520)
+        property bool saving: false
+        property string errorText: ""
+        closePolicy: saving ? Popup.NoAutoClose : Popup.CloseOnEscape
+        onOpened: { walletName.text = root.wallet ? root.wallet.name || "" : ""; errorText = ""; saving = false; walletName.forceActiveFocus() }
         contentItem: ColumnLayout {
-            LogosScrollView {
-                id: manageScroll; Layout.fillWidth: true; Layout.fillHeight: true; contentWidth: availableWidth
-                ColumnLayout {
-                    width: manageScroll.availableWidth; spacing: Theme.spacing.small
-                    LogosText { Layout.fillWidth: true; wrapMode: Text.WrapAnywhere; textFormat: Text.PlainText; color: Theme.palette.textSecondary; text: root.selectedWalletId.indexOf("seed:") === 0 ? "Wallet ID: " + root.selectedWalletId.slice(5) : "Wallet identity has not been verified yet." }
-                    LogosText { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Cards and Shells holding this seed share one wallet. A reader asks for the card PIN here; a Shell asks for confirmation on its own screen. Use the connection selector when adding accounts." }
-                    RowLayout {
-                        Layout.fillWidth: true; visible: root.wallet && !root.wallet.legacy
-                        LogosTextField { id: walletName; objectName: "walletName"; Layout.fillWidth: true; placeholderText: "Wallet name"; textInput.maximumLength: 80 }
-                        LogosButton { objectName: "saveWalletName"; text: "Save name"; onClicked: logos.watch(root.backend.renameCard(root.selectedWalletId, walletName.text), function(ok) {}) }
+            LogosTextField { id: walletName; objectName: "walletName"; Layout.fillWidth: true; placeholderText: "Wallet name"; textInput.maximumLength: 80; enabled: !renameWalletSheet.saving }
+            LogosText { text: "Every app shows this name, the Signer app included. Cards and Shells holding this seed share it."; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.textSecondary }
+            LogosText { text: renameWalletSheet.errorText; textFormat: Text.PlainText; visible: !!text; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.error }
+            RowLayout {
+                LogosButton { text: "Cancel"; enabled: !renameWalletSheet.saving; onClicked: renameWalletSheet.close() }
+                Item { Layout.fillWidth: true }
+                LogosButton {
+                    objectName: "saveWalletName"; text: "Save name"; enabled: !renameWalletSheet.saving
+                    onClicked: {
+                        renameWalletSheet.saving = true
+                        logos.watch(root.backend.renameCard(root.selectedWalletId, walletName.text), function(ok) {
+                            renameWalletSheet.saving = false
+                            if (ok) renameWalletSheet.close()
+                            else renameWalletSheet.errorText = root.backend.lastError
+                        })
                     }
-                    LogosButton {
-                        objectName: "verifyWalletAction"; text: "Verify wallet…"
-                        visible: root.selectedWalletId.indexOf("seed:") === 0 && root.shellDevices.length > 0
-                        enabled: !root.working
-                        onClicked: { verifySheet.walletId = root.selectedWalletId; verifySheet.open() }
-                    }
-                    LogosText { visible: !!root.card && root.card.trustedByPerson === true; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.error; text: "You trusted this card although Keycard did not certify it." }
-                    LogosButton { objectName: "stopTrusting"; visible: !!root.card && root.card.trustedByPerson === true; text: "Stop trusting"; onClicked: logos.watch(root.backend.forgetCard(root.card.identity), function(ok) { if(ok) manageSheet.close() }) }
-                    Repeater {
-                        model: (root.wallet && root.wallet.accounts) || []
-                        delegate: RowLayout {
-                            Layout.fillWidth: true
-                            LogosText { Layout.fillWidth: true; wrapMode: Text.WrapAnywhere; textFormat: Text.PlainText; text: (modelData.label || root.familyWords(modelData.family)) + "\n" + (modelData.address || modelData.path || modelData.id) }
-                            LogosButton {
-                                objectName: "renameAccount_" + index; text: "Rename"
-                                onClicked: {
-                                    renameAccountSheet.walletId = root.selectedWalletId
-                                    renameAccountSheet.accountId = modelData.id
-                                    renameAccountSheet.accountLabel = modelData.label || ""
-                                    renameAccountSheet.accountDetails = modelData.address || modelData.path || modelData.id
-                                    renameAccountSheet.open()
-                                }
-                            }
-                            LogosButton { objectName: "removeAccount_" + index; text: "Remove"; onClicked: logos.watch(root.backend.removeWalletAccount(root.selectedWalletId, modelData.id), function(ok) {}) }
-                        }
-                    }
-                    LogosText { visible: !root.shell; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.textSecondary; text: "Removing an account hides it from apps, including for other cards sharing the same recovery phrase. Nothing on the card changes." }
-                    LogosButton { objectName: "administerWalletCard"; text: "Card administration…"; visible: !!root.card; enabled: !root.working; onClicked: { adminSheet.preferredCard = root.card.adminId; manageSheet.close(); adminSheet.open() } }
-                    LogosButton { objectName: "forgetWallet"; visible: root.wallet && !root.wallet.legacy; text: "Forget wallet…"; onClicked: { forgetSheet.cardId = root.selectedWalletId; forgetSheet.cardName = root.groupName(root.wallet); forgetSheet.open() } }
-                    LogosText { Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText; text: root.ready ? root.backend.noticeText : "" }
-                    LogosText { Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText; color: Theme.palette.error; text: root.ready ? root.backend.lastError : "" }
                 }
             }
-            LogosButton { objectName: "manageDone"; text: "Done"; onClicked: manageSheet.close() }
         }
     }
     LogosDialog {
@@ -657,7 +659,7 @@ Item {
                         forgetSheet.working = true
                         logos.watch(root.backend.forgetSavedCard(forgetSheet.cardId), function(ok) {
                             forgetSheet.working = false
-                            if (ok) { forgetSheet.close(); manageSheet.close() }
+                            if (ok) forgetSheet.close()
                         })
                     }
                 }

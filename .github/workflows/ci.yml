@@ -152,3 +152,15 @@ jobs:
             if grep "ReferenceError" /tmp/qml.log | grep -v "logos is not defined"; then
               echo "::error::unexpected ReferenceError above"; exit 1
             fi'
+
+  accountkit:
+    name: src/qml/accountkit is logos-account-kit as pinned
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: scripts/check.sh at the pinned commit
+        run: |
+          set -euo pipefail
+          git clone -q https://github.com/logos-co/logos-account-kit "$RUNNER_TEMP/accountkit"
+          git -C "$RUNNER_TEMP/accountkit" checkout -q "$(cat src/qml/accountkit/VERSION)"
+          "$RUNNER_TEMP/accountkit/scripts/check.sh" .

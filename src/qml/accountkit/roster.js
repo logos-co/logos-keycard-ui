@@ -151,3 +151,84 @@ function homeId(e, opened) {
         if (known.indexOf(hs[i].accountId) >= 0) return hs[i].accountId
     return hs.length ? hs[0].accountId : ""
 }
+
+// The wallets of the signer manager's `wallets()` still locked, in its order. Their accounts
+// aren't offered until the person unlocks them in the Signer app.
+function lockedWallets(ws) {
+    return (ws || []).filter(function (w) { return !!w && w.locked === true })
+}
+
+// "Wallet “Main phrase” is locked", or "3 wallets are locked".
+function lockedTitle(locked) {
+    var n = (locked || []).length
+    if (n === 0) return ""
+    return n === 1 ? "Wallet “" + (text(locked[0].name) || "Unnamed") + "” is locked" : n + " wallets are locked"
+}
+
+// A wallet card's rows. An entry may carry `firstAddress`, a Bitcoin account's first receiving
+// address (0/0), and `addressNote`, said in its place when there is none.
+
+function familyWord(e) {
+    return isBitcoin(e) ? "Bitcoin" : "Ethereum"
+}
+
+// The name the person gave it, else what it is.
+function rowTitle(e) {
+    return text(e && e.label) || familyWord(e)
+}
+
+// "account 0": a Bitcoin account's number, or an EVM address's index.
+function rowId(e) {
+    var n = accountNumber(e)
+    return n >= 0 ? "account " + n : ""
+}
+
+function badges(e) {
+    if (!isBitcoin(e)) return []
+    return [scriptType(e)].concat(e.chain === "test" ? ["Test networks"] : [])
+}
+
+function addressLabel(e) {
+    if (!isBitcoin(e)) return "Address"
+    return e.chain === "test" ? "First receiving address (testnet/signet, 0/0)" : "First receiving address (0/0)"
+}
+
+// An EVM account's own address, or a Bitcoin account's first receiving one.
+function rowAddress(e) {
+    return text(isBitcoin(e) ? e && e.firstAddress : e && e.address)
+}
+
+function rowAddressText(e) {
+    var a = rowAddress(e)
+    return a ? shortAddress(a) : text(e && e.addressNote) || "Unavailable"
+}
+
+// Ethereum, then Bitcoin, then Bitcoin's test networks; SegWit before Taproot; then by number.
+function sortAccounts(entries) {
+    function group(e) { return !isBitcoin(e) ? 0 : e.chain === "test" ? 2 : 1 }
+    function script(e) { return e.family === "bitcoin_taproot" ? 1 : 0 }
+    var list = (entries || []).map(function (e, i) { return { e: e, i: i } })
+    list.sort(function (a, b) {
+        return group(a.e) - group(b.e) || script(a.e) - script(b.e)
+            || accountNumber(a.e) - accountNumber(b.e) || a.i - b.i
+    })
+    return list.map(function (x) { return x.e })
+}
+
+// An action as an app passes it: a label, or { id, label, enabled, tip }.
+function action(a) {
+    if (typeof a === "string") return { id: a, label: a, enabled: true, tip: "" }
+    var label = text(a && a.label)
+    return { id: text(a && a.id) || label, label: label, enabled: !a || a.enabled !== false, tip: text(a && a.tip) }
+}
+
+// A list of them, or a function of the entry that returns one.
+function actions(list, entry) {
+    var l = typeof list === "function" ? list(entry) : list
+    return (l || []).map(action).filter(function (a) { return a.label.length > 0 })
+}
+
+// The object-name suffix of an action: its id, letters, digits and underscores only.
+function actionName(a) {
+    return text(a && a.id).replace(/[^A-Za-z0-9_]/g, "")
+}

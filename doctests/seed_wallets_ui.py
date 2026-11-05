@@ -40,17 +40,20 @@ def pick(first, picks, pin=True):
  for n,(_,name) in enumerate(picks): setp('addAccountName_'+str(n),'text',name)
  click('keepAccounts');wait('!opened','addAccountsDialog')
 def rename_account(wallet, label):
- click('manageWallet_'+str(wallet));click('renameAccount_0')
+ click('wallet%d_Account_0_Action_rename'%wallet)
  setp('accountName','text',label);click('saveAccountName')
- wait('!opened','renameAccountDialog');close('manageWalletDialog')
+ wait('!opened','renameAccountDialog')
+def rename_wallet(wallet, name):
+ click('wallet%d_Action_rename'%wallet);setp('walletName','text',name);click('saveWalletName')
+ wait('!opened','renameWalletDialog')
 
 wait('ready && cardGroups.length === 1 && shellDevices.length === 1')
 assert value('cards.length === 1 && cards[0].reader === "Keycard simulator"'), 'Simulator required'
 assert value('shellDevices[0].serial') == '62a772f85e4be6226108b56c0b1cf9', 'Known emulator required'
 reader=value('wallets.findIndex(function(g){return g.id.indexOf("seed:") === 0})')
-click('addAccounts_'+str(reader));pick(0,[(0,'Reader savings')])
+click('wallet%d_Action_add'%reader);pick(0,[(0,'Reader savings')])
 wait('cardGroups[0].accounts.length === 1 && !working')
-click('manageWallet_'+str(reader));setp('walletName','text','Reader wallet');click('saveWalletName');wait('cardGroups[0].name === "Reader wallet"');close('manageWalletDialog')
+rename_wallet(reader,'Reader wallet');wait('cardGroups[0].name === "Reader wallet"')
 evaluate('openAdd({id:"shell:"+shellDevices[0].serial+":", serial:shellDevices[0].serial,pending:true,transport:"shell",accounts:[],connected:true})')
 pick(0,[(0,'Shell savings')],pin=False)
 wait('shellGroups.length === 1 && shellGroups[0].accounts.length === 1 && !working')
@@ -60,9 +63,8 @@ assert value('wallets[0].accounts[0].aliases') == ['Reader savings','Shell savin
 evaluate('openAdd(wallets[0]); selectedConnectionId = "shell:" + shellDevices[0].serial + ":"')
 assert value('shell'), 'The merged wallet adds through the Shell it names'
 pick(1,[(0,'Second account')],pin=False);wait('shellGroups[0].accounts.length === 2 && !working')
-click('manageWallet_0');setp('walletName','text','Unified wallet');click('saveWalletName');wait('cardGroups[0].name === "Unified wallet" && shellGroups[0].name === "Unified wallet"')
-click('renameAccount_0');setp('accountName','text','Unified savings');click('saveAccountName');wait('!opened','renameAccountDialog')
+rename_wallet(0,'Unified wallet');wait('cardGroups[0].name === "Unified wallet" && shellGroups[0].name === "Unified wallet"')
+rename_account(0,'Unified savings')
 wait('cardGroups[0].accounts[0].label === "Unified savings" && shellGroups[0].accounts[0].label === "Unified savings"')
-close('manageWalletDialog')
 print('PASS: same master key merges reader and Shell; account deduplication, labels, connection selection, derivation, and rename across both providers',flush=True)
 Path('/tmp/keycard-seed-check/unified.png').write_bytes(base64.b64decode(send('screenshot')['image']))

@@ -29,9 +29,15 @@ wallets merge; duplicate accounts retain both labels until explicitly renamed. A
 remain stable so existing app references survive. No private keys or chain codes are needed
 for the wallet identity. All USB confirmations happen on the Shell.
 
-**Manage…** contains wallet/account naming and removal. Reader connections also offer PIN/PUK
-controls. Forgetting a seed wallet removes its local accounts and name, never card contents;
-its reader cards must be disconnected first. Pairing and trust remain physical-card metadata.
+Each wallet is [logos-account-kit](https://github.com/logos-co/logos-account-kit)'s
+`WalletCard`, as in the Signer and Keys apps. Its **Wallet ID** is the master fingerprint its
+accounts carry. Each account row shows its name and number, derivation path, and address (a
+Bitcoin account's first receiving one), with its own **Rename…** and **Remove**. Each connected
+device is a strip, a reader card's with **Card administration…**, and a card trusted without
+Keycard's certificate adds a warning with **Stop trusting**. The wallet's own **Rename…**,
+**Verify wallet…** and **Forget wallet…** sit at its bottom. A wallet's name is shared through
+the signer manager, so a rename here shows in the Signer app. Forgetting a seed wallet removes
+its local accounts and name, never card contents; its reader cards must be disconnected first. Pairing and trust remain physical-card metadata.
 The signer modules retain their own account offers: merging the display does not silently
 export extra accounts or authorize signing. Shell signing verifies the root again and can
 use another previously identified Shell connection for the same wallet.
@@ -52,7 +58,7 @@ from matching source when using the wallet grouping APIs added in this change.
 
 Licensed under MIT or Apache-2.0.
 
-Account labels can be changed locally with `rename_account(id, name)` in the backing signer modules. Names are trimmed, limited to 80 characters, and an empty name clears the label. Keys and derivation paths are unchanged; updated labels are announced to account consumers. In Keycard UI, use **Manage → Rename** beside an account.
+Account labels can be changed locally with `rename_account(id, name)` in the backing signer modules. Names are trimmed, limited to 80 characters, and an empty name clears the label. Keys and derivation paths are unchanged; updated labels are announced to account consumers. In Keycard UI, use **Rename…** on the account's row.
 
 ### Signing across connections
 
@@ -78,7 +84,7 @@ Only `signer_manager_module` may supply the optional `keycardAccount` public rou
 to `sign`. Legacy Shell accounts must first use “Identify wallet…” to establish their full
 master key identity. No PIN or pairing data is shared between the providers.
 
-Use **Manage → Verify wallet…** to choose a connected Shell and request a fresh master-key
+Use the wallet's **Verify wallet…** to choose a connected Shell and request a fresh master-key
 confirmation even when the connection is already verified. The action clears the prior cache
 first; refusal leaves it unverified, and a different root is reported as a wallet mismatch.
 The module accepts `add_accounts` with `verifyOnly: true`, empty `families`, and an optional
@@ -87,8 +93,8 @@ renaming or regrouping any saved accounts or wallets.
 
 ### Card administration
 
-Use **Card administration…** in the toolbar, or from a connected reader wallet's
-**Manage…** dialog. Choose the physical card before the operation. This remains
+Use **Card administration…** in the toolbar, or on a connected reader card's strip in its
+wallet. Choose the physical card before the operation. This remains
 available for cards with no seed or accounts. A Shell-only connection explains that
 administration requires moving its card to a direct reader.
 
