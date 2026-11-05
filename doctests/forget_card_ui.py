@@ -30,19 +30,19 @@ def wait(expr):
 wait('ready && cardGroups.length === 3')
 assert val('cardGroups.map(function(g){return g.name})') == ['Travel card','Backup test card','Empty test card']
 assert val('accounts.length')==1
-click('manageWallet_2');click('forgetWallet');time.sleep(.2)
-click('cancelForgetSavedCard');send('evaluate',{'objectId':obj('manageWalletDialog'),'expression':'close()'})
+click('wallet2_Action_forget');time.sleep(.2)
+click('cancelForgetSavedCard')
 assert val('cardGroups.length')==3
 print('PASS: Cancel leaves cards and accounts intact')
-click('manageWallet_2');click('forgetWallet');click('confirmForgetSavedCard')
+click('wallet2_Action_forget');click('confirmForgetSavedCard')
 wait('cardGroups.length === 2')
 assert val('accounts.length')==1
 print('PASS: empty card can be forgotten')
-click('manageWallet_0');click('forgetWallet');click('confirmForgetSavedCard')
+click('wallet0_Action_forget');click('confirmForgetSavedCard')
 wait('cardGroups.length === 1')
 assert val('cardGroups[0].name')=='Backup test card'
 assert val('accounts.length')==1
 print('PASS: forgetting one card preserves the account shared with the backup card')
-click('manageWallet_0');click('forgetWallet');click('confirmForgetSavedCard')
+click('wallet0_Action_forget');click('confirmForgetSavedCard')
 wait('cardGroups.length === 0 && accounts.length === 0')
 print('PASS: forgetting the last card removes its offered accounts')

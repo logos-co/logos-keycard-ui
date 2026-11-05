@@ -81,9 +81,9 @@ sections:
               action: wait_for
               texts: ["Keycard wallets", "No accounts yet."]
               timeout: 60000
-            - name: "Manage the card"
+            - name: "Rename the wallet"
               action: click_object
-              find_value: "manageWallet_0"
+              find_value: "wallet0_Action_rename"
             - name: "Name the wallet"
               action: set_text
               find_by: "objectName"
@@ -92,12 +92,16 @@ sections:
             - name: "Save its name"
               action: click_object
               find_value: "saveWalletName"
-            - name: "Close settings"
-              action: click_object
-              find_value: "manageDone"
+            - name: "The dialog closes once saved"
+              action: expect_property
+              find_by: "objectName"
+              find_value: "renameWalletDialog"
+              property: "visible"
+              value: false
+              timeout: 10000
             - name: "Choose accounts"
               action: click_object
-              find_value: "addAccounts_0"
+              find_value: "wallet0_Action_add"
             - name: "Authorize the public export"
               action: set_text
               find_by: "objectName"
@@ -129,7 +133,7 @@ sections:
               find_value: "keepAccounts"
             - name: "Both accounts are in the wallet"
               action: wait_for
-              texts: ["Spending", "Derivation path: m/44'/60'/0'/0/2"]
+              texts: ["Spending", "m/44'/60'/0'/0/2"]
               timeout: 60000
 
   - title: "A card Keycard didn't sign"
@@ -207,19 +211,16 @@ sections:
               find_value: "reviewUnverified"
               property: "visible"
               value: false
-            - name: "Manage its wallet"
-              action: click_object
-              find_value: "manageWallet_0"
-            - name: "Its settings open"
+            - name: "Its wallet warns of the trusted card"
               action: expect_property
               find_by: "objectName"
-              find_value: "manageWalletDialog"
-              property: "opened"
-              value: true
+              find_value: "wallet0_Strip_trust_Text"
+              property: "text"
+              value: "You trusted this card although Keycard did not certify it."
               timeout: 10000
             - name: "Stop trusting it"
               action: click_object
-              find_value: "stopTrusting"
+              find_value: "wallet0_Strip_trust_Action_stoptrust"
             - name: "Refused again"
               action: expect_property
               find_by: "objectName"
