@@ -79,6 +79,13 @@ Item {
         var a = ((g && g.accounts) || []).find(function(a) { return !!a.fingerprint })
         return a ? a.fingerprint : ""
     }
+    // All of these act on the whole wallet, so they sit together beside its name.
+    function walletActions(g) {
+        return [{ id: "add", label: "Add accounts", enabled: g.connected && !root.working && !g.legacy && g.locked !== true }]
+            .concat(g.legacy || g.pending ? [] : [{ id: "rename", label: "Rename…" }]
+                .concat(g.id.indexOf("seed:") === 0 && root.shellDevices.length > 0 ? [{ id: "verify", label: "Verify wallet…", enabled: !root.working }] : [])
+                .concat([{ id: "forget", label: "Forget wallet…" }]))
+    }
     function aliasesOf(g) { return (g.aliases || []).filter(function(n) { return n !== g.name }) }
     function cardFor(c) { return root.cards.find(function(k) { return cardId(k) === c.id }) || null }
     // Each device in use, a card trusted without Keycard's certificate, and an older Shell wallet.
@@ -145,13 +152,10 @@ Item {
                     locked: g.locked === true
                     lockedActions: [{ id: "unlock", label: "Unlock", enabled: root.ready }]
                     accounts: root.rowsOf(g)
-                    actions: [{ id: "add", label: "Add accounts", enabled: g.connected && !root.working && !g.legacy && g.locked !== true }]
+                    actions: root.walletActions(g)
                     accountActions: [{ id: "rename", label: "Rename…", enabled: !root.working },
                                      { id: "remove", label: "Remove", enabled: !root.working,
                                        tip: "Hides it from apps, including for other cards sharing the same recovery phrase. Nothing on the card changes." }]
-                    rightActions: g.legacy || g.pending ? [] : [{ id: "rename", label: "Rename…" }]
-                                  .concat(g.id.indexOf("seed:") === 0 && root.shellDevices.length > 0 ? [{ id: "verify", label: "Verify wallet…", enabled: !root.working }] : [])
-                                  .concat([{ id: "forget", label: "Forget wallet…" }])
                     onAction: function (id) {
                         if (id === "add") root.openAdd(group.g)
                         else if (id === "unlock") root.unlockInSigner()

@@ -34,8 +34,8 @@ Each wallet is [logos-account-kit](https://github.com/logos-co/logos-account-kit
 accounts carry. Each account row shows its name and number, derivation path, and address (a
 Bitcoin account's first receiving one), with its own **Rename…** and **Remove**. Each connected
 device is a strip, a reader card's with **Card administration…**, and a card trusted without
-Keycard's certificate adds a warning with **Stop trusting**. The wallet's own **Rename…**,
-**Verify wallet…** and **Forget wallet…** sit at its bottom. A wallet's name is shared through
+Keycard's certificate adds a warning with **Stop trusting**. The wallet's own **Add accounts**,
+**Rename…**, **Verify wallet…** and **Forget wallet…** sit together beside its name. A wallet's name is shared through
 the signer manager, so a rename here shows in the Signer app. Forgetting a seed wallet removes
 its local accounts and name, never card contents; its reader cards must be disconnected first. Pairing and trust remain physical-card metadata.
 The signer modules retain their own account offers: merging the display does not silently
