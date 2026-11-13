@@ -79,7 +79,7 @@ sections:
           tests:
             - name: "Wallet home"
               action: wait_for
-              texts: ["Keycard wallets", "No accounts yet."]
+              texts: ["Wallets and card administration", "No accounts yet."]
               timeout: 60000
             - name: "Rename the wallet"
               action: click_object
