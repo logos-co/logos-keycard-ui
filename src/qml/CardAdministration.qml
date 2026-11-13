@@ -211,43 +211,12 @@ ColumnLayout {
         ColumnLayout {
         width: adminScroll.availableWidth
         spacing: Theme.spacing.small
-        RowLayout {
-            visible: admin.usableCards.length > 0
-            Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small; spacing: Theme.spacing.small
-            LogosText { text: "Select card"; font.pixelSize: Theme.typography.subtitleText; font.weight: Theme.typography.weightBold; color: Theme.palette.text }
-            Item { Layout.fillWidth: true }
-            LogosLink { objectName: "howToConnectLink"; text: "How to connect a card"; onActivated: connectHelpDialog.open() }
-        }
+        LogosText { visible: admin.usableCards.length > 0; Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small; text: "Select card"; font.pixelSize: Theme.typography.subtitleText; font.weight: Theme.typography.weightBold; color: Theme.palette.text }
         RowLayout {
             visible: admin.usableCards.length > 0
             Layout.fillWidth: true
             LogosComboBox { id: picker; objectName: "adminCardPicker"; Layout.fillWidth: true; enabled: !admin.busy; model: admin.usableCards.map(function(c) { return (admin.cardName(c) || "No name") + " · " + c.adminId.split(":").pop().slice(0,8) + " · " + c.reader }); onActivated: admin.selectCard(currentIndex) }
             LogosIconButton { objectName: "adminRefresh"; iconSource: Qt.resolvedUrl("assets/refresh.svg"); enabled: !admin.busy; onClicked: logos.watch(admin.backend.refresh(), function() { admin.selectCard(picker.currentIndex) }) }
-        }
-        LogosDialog {
-            id: connectHelpDialog
-            objectName: "connectHelpDialog"
-            title: "Connecting a Keycard"
-            parent: Overlay.overlay
-            anchors.centerIn: parent
-            width: Math.min((parent ? parent.width : 600) - 40, 480)
-            closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-            contentItem: ColumnLayout {
-                spacing: Theme.spacing.small
-                LogosText { Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.text; text: "Administration works on a physical Keycard in a direct smart-card reader connected over USB." }
-                LogosText { Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.textSecondary; text: "A Keycard Shell connection is for signing and accounts only; it does not expose card administration. To administer a card that is in a Shell, move the card into a direct reader." }
-                RowLayout {
-                    Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small; spacing: Theme.spacing.tiny
-                    LogosLink { text: "Get a reader"; href: "https://keycard.tech/products/keycard-reader-for-desktop"; onActivated: function(url) { getReaderCopy.copy(); Qt.openUrlExternally(url) } }
-                    LogosCopyButton { id: getReaderCopy; value: "https://keycard.tech/products/keycard-reader-for-desktop"; feedbackText: "URL copied"; size: 24; iconSize: 14 }
-                    Item { Layout.fillWidth: true }
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    Item { Layout.fillWidth: true }
-                    LogosButton { text: "Close"; onClicked: connectHelpDialog.close() }
-                }
-            }
         }
         ColumnLayout {
             visible: admin.usableCards.length === 0

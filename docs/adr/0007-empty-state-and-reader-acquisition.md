@@ -1,6 +1,6 @@
 # ADR-G: Administration empty state and reader acquisition
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-13
 - Scope: `keycard_ui` (UI only; no backend or `.rep` change)
 - Issue: #2 / #3
@@ -27,11 +27,13 @@ path from it.
    link to the Keycard desktop reader page, with a copy button that copies the URL (clicking
    the link also copies and confirms, since opening an external browser may be blocked in
    the plugin sandbox).
-3. While a card **is** present, the same guidance is one tap away: a "How to connect a card"
-   link at the end of the "Select card" title opens a help modal that explains the Shell
-   quirk and carries the same "Get a reader" link + copy.
+3. Do **not** keep a persistent help affordance while a card is present. When
+   administration is working, a "how to connect" link is interface with no live purpose, and
+   the empty state already covers the discovery case and the Shell-only case (a Shell with
+   no reader card shows the empty state). An earlier revision placed a "How to connect a
+   card" link and help modal in the "Select card" title; both were removed as redundant.
 4. Remove the long instructional sentence that sat above the title; its content now lives in
-   the modal and the empty state, where it is contextual rather than permanent chrome.
+   the empty state, where it is contextual rather than permanent chrome.
 
 Design lens (onboarding as capacity, from the virtual-world material): a person who arrives
 at administration without the hardware is unabsorbed demand. The screen should hand them the

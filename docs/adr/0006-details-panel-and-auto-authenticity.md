@@ -1,6 +1,6 @@
 # ADR-F: The Details panel, card facts at a glance with auto-verified authenticity
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-13
 - Scope: `keycard_ui` (UI only; no backend or `.rep` change)
 - Issue: #2 (refines ADR-C)
