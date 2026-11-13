@@ -12,12 +12,16 @@ Item {
     Rectangle { anchors.fill: parent; color: Theme.palette.background }
     readonly property var backend: logos.module("keycard_ui")
     property bool ready: false
+    // Startup has stalled if the view module is not ready after a grace window. Turns the
+    // silent, timeout-less "Starting" into an honest, actionable state.
+    property bool startupStalled: false
     readonly property url iconRefresh: Qt.resolvedUrl("assets/refresh.svg")
     Component.onCompleted: ready = backend !== null && logos.isViewModuleReady("keycard_ui")
+    Timer { running: !root.ready && !root.startupStalled; interval: 15000; onTriggered: root.startupStalled = true }
     Connections {
         target: logos
         function onViewModuleReadyChanged(name, isReady) {
-            if (name === "keycard_ui") root.ready = isReady && root.backend !== null
+            if (name === "keycard_ui") { root.ready = isReady && root.backend !== null; if (root.ready) root.startupStalled = false }
         }
         // Opened to manage accounts: being here answers it, and `handoff` keeps the person here.
         function onIntentRequested(requestId, intent, params, requesterName) {
@@ -40,11 +44,11 @@ Item {
     // (no reader vs empty reader vs reader-present-but-PCSC-rejected) need keycard_module to
     // report bare readers; tracked upstream. Here we honestly show what we can see.
     readonly property bool anyConnected: cards.length > 0 || shellDevices.length > 0
-    readonly property string connLabel: !ready ? "Starting"
+    readonly property string connLabel: !ready ? (startupStalled ? "Not responding" : "Starting")
         : cards.length > 0 ? "Card reader connected"
         : shellDevices.length > 0 ? "Shell connected"
         : "No Keycard in a reader"
-    readonly property color connColor: anyConnected ? Theme.palette.success : Theme.palette.textSecondary
+    readonly property color connColor: !ready && startupStalled ? Theme.palette.warning : anyConnected ? Theme.palette.success : Theme.palette.textSecondary
     readonly property var exporting: ready ? j(backend.exportJson, "{}") : ({})
     readonly property bool working: exporting.state === "working" || exporting.state === "confirm_on_device"
     property string selectedWalletId: ""
@@ -147,6 +151,16 @@ Item {
             id: areaTabs; objectName: "areaTabs"; Layout.fillWidth: true
             LogosTabButton { objectName: "areaWallets"; text: "Wallets"; font.pixelSize: Theme.typography.secondaryText }
             LogosTabButton { objectName: "areaAdministration"; text: "Administration"; enabled: root.ready; font.pixelSize: Theme.typography.secondaryText }
+        }
+        RowLayout {
+            objectName: "startupStalledBanner"
+            visible: root.startupStalled && !root.ready
+            Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small; spacing: Theme.spacing.small
+            LogosText {
+                Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.warning
+                text: "The Keycard service hasn't finished starting. This can happen after a restart. If it persists, fully quit and reopen Basecamp."
+            }
+            LogosButton { objectName: "startupRetry"; text: "Try again"; onClicked: { root.startupStalled = false; root.ready = root.backend !== null && logos.isViewModuleReady("keycard_ui") } }
         }
     }
     CardAdministration {
