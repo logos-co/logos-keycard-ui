@@ -35,6 +35,15 @@ Item {
     }).map(function(d) { return {id: "shell:" + d.serial + ":", serial: d.serial, transport: "shell", connected: true, pending: true, accounts: [], connections: [{transport: "shell", serial: d.serial, connected: true}]} }))
     readonly property var accounts: ready ? j(backend.accountsJson, "[]") : []
     readonly property var unsigned: cards.filter(function(c) { return c.untrusted !== undefined })
+    // Header connection state, from signals the view already has. The finer negative cases
+    // (no reader vs empty reader vs reader-present-but-PCSC-rejected) need keycard_module to
+    // report bare readers; tracked upstream. Here we honestly show what we can see.
+    readonly property bool anyConnected: cards.length > 0 || shellDevices.length > 0
+    readonly property string connLabel: !ready ? "Starting"
+        : cards.length > 0 ? "Card reader connected"
+        : shellDevices.length > 0 ? "Shell connected"
+        : "No Keycard in a reader"
+    readonly property color connColor: anyConnected ? Theme.palette.success : Theme.palette.textSecondary
     readonly property var exporting: ready ? j(backend.exportJson, "{}") : ({})
     readonly property bool working: exporting.state === "working" || exporting.state === "confirm_on_device"
     property string selectedWalletId: ""
@@ -127,9 +136,11 @@ Item {
                 Item { Layout.fillWidth: true }
                 LogosButton { objectName: "cardAdministration"; text: "Card administration…"; enabled: root.ready && !root.working; onClicked: adminSheet.open() }
                 LogosButton { objectName: "connectShell"; text: "Open wallet via USB…"; visible: root.shellDevices.length > 0; enabled: !root.working; onClicked: shellSheet.open() }
+                LogosBadge { objectName: "connectionStatus"; text: root.connLabel; color: root.connColor }
                 LogosButton { text: "Refresh"; enabled: root.ready && !root.working; onClicked: root.backend.refresh() }
             }
             LogosText {
+                visible: root.ready && root.cards.length === 0 && root.shellDevices.length === 0
                 Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.textSecondary
                 text: "Connect a Keycard reader or a Keycard Shell over USB. Your keys stay on the card."
             }
