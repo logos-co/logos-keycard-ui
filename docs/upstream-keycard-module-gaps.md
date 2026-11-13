@@ -16,28 +16,24 @@ sent upstream yet. Each item says what, why it matters, the evidence, and a prop
 - **Proposed fix:** a `readers()` method, or include empty-reader entries in `cards()`
   (a reader with no `adminId`/`keyUid`), so the UI can tell empty-reader from no-reader.
 
-## 2. `cards()` does not return `pukRetries` (BlockedPUK gating)
+## 2. `pukRetries` is not on the `cards()` list object (only in `status`)
 
-- **What:** each card entry carries `pinRetries` but not `pukRetries`. `pukRetries` is only
-  available from the `status` action result.
-- **Why:** Status gates a PUK-frozen card (`isBlockedPUK`) down to factory-reset only. We
-  cannot gate the action list to that state without first running `status`, so a frozen
-  card still lists actions that will fail (ADR-E, limit 1).
-- **Evidence:** `keycard_module.lidl` `cards()` field list (has `pinRetries`, no
-  `pukRetries`); `docs/keycard-state-action-map.md`.
-- **Proposed fix:** add `pukRetries` to each `cards()` entry, alongside `pinRetries`.
+- **What:** `pukRetries` is returned by the `status` action (confirmed live: Card details
+  shows "PUK attempts left: 5"), but it is not a field on each `cards()` entry. Note the
+  correction: `freePairingSlots` **is** available, both in `cards()` (the `CardInfo`
+  struct's `free_pairing_slots`) and in `status`, so it is not a gap.
+- **Why:** this is a minor convenience, not a missing capability. Status gates a PUK-frozen
+  card (`isBlockedPUK`) to factory-reset only at the list level. We can only reach that
+  state after a `status` read, so a frozen card still lists actions that will fail until the
+  user reads its details (ADR-E, limit). Everything stays safe (the module rejects the
+  impossible call and factory reset, the correct exit, is always offered).
+- **Evidence:** `rust-lib/src/card.rs` `CardInfo` (has `pin_retries`, `free_pairing_slots`;
+  no `puk_retries`); `rust-lib/src/admin.rs` `status` result (has `pukRetries`,
+  `freePairingSlots`).
+- **Proposed fix:** add `pukRetries` to each `cards()` entry, alongside `pinRetries`, so the
+  action list can match Status without a prior `status` read. Low priority.
 
-## 3. `cards()` does not return the free-pairing-slot count (no-slots gating)
-
-- **What:** the free pairing-slot count is only in the `status` result
-  (`freePairingSlots`), not in `cards()`.
-- **Why:** Status hides content operations when a 3.x card has no free slots and no known
-  pairing (`noKnownAndNoAvailablePairingSlots`), because no secure channel can be
-  established. We cannot reproduce that gate at the action-list level (ADR-E, limit 2).
-- **Evidence:** `status` result carries `freePairingSlots`; `cards()` does not.
-- **Proposed fix:** include the free-slot count (and/or a `pairable` flag) in `cards()`.
-
-## 4. `message` is written but never declared in `CardAdministration.qml` (bug, fixed here)
+## 3. `message` is written but never declared in `CardAdministration.qml` (bug, fixed here)
 
 - **What:** `CardAdministration.qml` assigned `message` in `perform()`, `selectCard`,
   `onChangedChanged`, `onActionChanged` and more, but never declared it as a property. In
@@ -50,7 +46,7 @@ sent upstream yet. Each item says what, why it matters, the evidence, and a prop
 - **Fix (applied in our fork):** declare `property string message: ""` on the root. One
   line. Worth upstreaming regardless of the rest of our UI changes.
 
-## 5. The `.#install` target tags the variant `linux-amd64-dev`, which the host rejects
+## 4. The `.#install` target tags the variant `linux-amd64-dev`, which the host rejects
 
 - **What / owner:** this is build-tooling (`logos-module-builder` / the host loader), not
   `keycard_module` proper, but it was found here and is worth routing. `nix build .#install`

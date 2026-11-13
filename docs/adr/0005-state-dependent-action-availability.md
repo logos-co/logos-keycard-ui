@@ -75,22 +75,23 @@ Positive:
 
 Costs and limits:
 
-- Two states Status gates on are not fully gatable here, because `keycard_module.cards()`
-  does not return the needed fields (see the upstream gaps below). Specifically BlockedPUK
-  and "no free pairing slots". The actions remain safe (the module rejects an impossible
-  call and `factory_reset`, the correct exit, stays offered), but the list cannot pre-hide
-  them the way Status does.
+- One state Status gates on, BlockedPUK, is not gatable at the list level, because
+  `pukRetries` is returned by the `status` action but is not a field on each `cards()`
+  entry. The actions remain safe (the module rejects an impossible call and `factory_reset`,
+  the correct exit, stays offered), but the list cannot pre-hide them the way Status does
+  until a `status` read. (`freePairingSlots` is available in `cards()`, so "no free pairing
+  slots" is not blocked by a missing field.)
 
 ## Upstream dependencies (keycard_module)
 
 Recorded in `docs/upstream-keycard-module-gaps.md`:
 
-1. `cards()` should return `pukRetries`, so a BlockedPUK card can be gated to factory reset
-   only (as Status's `isBlockedPUK` does), without first running `status`.
-2. `cards()` should return the free-pairing-slot count, so "no free pairing slots" can be
-   surfaced the way Status's `noKnownAndNoAvailablePairingSlots` is.
+1. `cards()` could return `pukRetries` (it is in the `status` result, not on the per-card
+   list object), so a BlockedPUK card can be gated to factory reset only, as Status's
+   `isBlockedPUK` does, without first running `status`. Low priority; everything stays safe
+   without it.
 
-Neither blocks this decision; both would let the UI match Status exactly.
+This does not block the decision; it would let the list match Status without a `status` read.
 
 ## Alternatives considered
 

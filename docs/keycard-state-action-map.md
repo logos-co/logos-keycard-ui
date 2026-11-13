@@ -22,9 +22,10 @@ card (`initialized`, `keyUid`, `secureChannel`, `paired`, `pinRetries`, `capabil
 | BlockedPUK | `isBlockedPUK` | `pukRetries === 0` (status only) | PUK frozen (5 fails) → reset only |
 | 3.x not paired | — | `secureChannel === 1 && !paired` | needs pairing before any op |
 
-Note: `pukRetries` is not in `cards()` (only in the `status` result), so BlockedPUK is
-not distinguishable at the action-list level; factory reset, its only exit, stays offered.
-An upstream improvement would add `pukRetries` (and free-slot count) to `cards()`.
+Note: `pukRetries` is returned by the `status` action but is not a field on each `cards()`
+entry, so BlockedPUK is not distinguishable at the action-list level; factory reset, its
+only exit, stays offered. (`freePairingSlots` **is** in `cards()`, so it is not missing.)
+An upstream improvement would add `pukRetries` to the `cards()` entries.
 
 ## Action availability (our module's actions only)
 

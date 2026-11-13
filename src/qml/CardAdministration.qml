@@ -16,7 +16,35 @@ ColumnLayout {
     property bool active: false
     property var backend
     property var cards: []
+    // Local card names live in cardGroups (not on the card object); used for the picker label.
+    property var cardGroups: []
+    property bool advancedOpen: false
+    // Authenticity, checked automatically on card load. The module attempts an identity proof
+    // on any card (4.0 via its certificate, 3.x applets that support identify_card); cards that
+    // cannot prove identity return an error, shown as "Could not verify".
+    property string authenticity: ""
+    function checkAuthenticity() {
+        authenticity = ""
+        if (!selected) return
+        authenticity = "Checking…"
+        var p = {action:"check_identity", reader:selected.reader, cardId:selected.adminId, keyUid:selected.keyUid || ""}
+        logos.watch(backend.administer(JSON.stringify(p)), function(raw) {
+            var r; try { r = JSON.parse(raw) } catch(e) { r = {ok:false} }
+            authenticity = r.ok ? (r.genuine ? "Verified by Keycard" : "Not certified by Keycard") : "Could not verify"
+        })
+    }
     readonly property var usableCards: cards.filter(function(c) { return !!c.adminId })
+    // The saved name for a card, resolved from cardGroups by the reader it sits in ("" if none).
+    function cardName(c) {
+        if (!c) return ""
+        for (var i = 0; i < cardGroups.length; i++) {
+            var cs = cardGroups[i].connections || []
+            for (var j = 0; j < cs.length; j++) {
+                if (cs[j].reader === c.reader) return cardGroups[i].name || ""
+            }
+        }
+        return ""
+    }
     property var selected: null
     property string preferredCard: ""
     property bool busy: false
@@ -56,7 +84,7 @@ ColumnLayout {
         if (!hasKeys) {
             ops = ops.concat([{id:"generate_phrase",label:"Create recovery phrase"},
                 {id:"load_phrase",label:"Import recovery phrase"},
-                {id:"generate_key",label:"Generate keys without backup (advanced)"}])
+                {id:"generate_key",label:"Generate keys without backup"}])
         } else {
             ops = ops.concat([{id:"verify_phrase",label:"Check recovery phrase"},
                 {id:"remove_key",label:"Erase keys from card"}])
@@ -65,7 +93,7 @@ ColumnLayout {
         ops = ops.concat([{id:"change_pin",label:"Change PIN"},{id:"change_puk",label:"Change PUK"}])
         if (selected.secureChannel === 1) ops = ops.concat([{id:"change_pairing_password",label:"Change pairing password"},{id:"unpair",label:"Remove a pairing slot"}])
         ops = ops.concat([{id:"set_name",label:"Name stored on card"},{id:"set_ndef",label:"NFC text message"},
-            {id:"read_data",label:"Read card data (advanced)"},{id:"write_data",label:"Write card data (advanced)"}])
+            {id:"read_data",label:"Read card data"},{id:"write_data",label:"Write card data"}])
         if (canReset) ops.push({id:"factory_reset",label:"Factory reset card"})
         return ops
     }
@@ -76,11 +104,12 @@ ColumnLayout {
     // hidden backing model so the selection source of truth, and the doctests, are unchanged.
     readonly property var actionGroups: {
         var tiers = [
-            {name:"Set up and keys", danger:false, ids:["initialize","pair","generate_phrase","load_phrase","verify_phrase","change_pin","change_puk","unblock_pin","change_pairing_password","unpair","set_name","set_ndef","read_data"]},
-            {name:"Destructive", danger:true, ids:["write_data","generate_key","remove_key","factory_reset"]}
+            {name:"Set up and keys", danger:false, advanced:false, ids:["initialize","pair","generate_phrase","load_phrase","verify_phrase","change_pin","change_puk","unblock_pin","set_name"]},
+            {name:"Destructive", danger:true, advanced:false, ids:["remove_key","factory_reset"]},
+            {name:"Advanced", danger:false, advanced:true, ids:["change_pairing_password","unpair","set_ndef","read_data","write_data","generate_key"]}
         ]
         var byId = {}; choices.forEach(function(o) { byId[o.id] = o })
-        return tiers.map(function(t) { return {name:t.name, danger:t.danger, items: t.ids.filter(function(id) { return byId[id] }).map(function(id) { return byId[id] })} })
+        return tiers.map(function(t) { return {name:t.name, danger:t.danger, advanced:t.advanced, items: t.ids.filter(function(id) { return byId[id] }).map(function(id) { return byId[id] })} })
                     .filter(function(g) { return g.items.length > 0 })
     }
     readonly property bool needsPin: ["check_identity","status","initialize","pair","factory_reset","unblock_pin","read_data"].indexOf(action) < 0
@@ -106,7 +135,7 @@ ColumnLayout {
         return ""
     }
     function clearSecrets() { advanced.checked = false; customPairing.checked = false; pin.text = ""; newPin.text = ""; repeatPin.text = ""; puk.text = ""; repeatPuk.text = ""; pairing.text = ""; repeatPairing.text = ""; alternate.text = ""; repeatAlternate.text = ""; phrase.text = ""; passphrase.text = ""; generated = []; backedUp.checked = false; confirm.text = "" }
-    function selectCard(index) { clearSecrets(); selected = index >= 0 ? usableCards[index] : null; operation.currentIndex = -1; message = ""; if (typeof opDialog !== "undefined") opDialog.close() }
+    function selectCard(index) { clearSecrets(); selected = index >= 0 ? usableCards[index] : null; operation.currentIndex = -1; message = ""; if (typeof opDialog !== "undefined") opDialog.close(); checkAuthenticity() }
     // Card status and authenticity need no PIN; run them directly from the status section
     // without the action/confirm flow. Self-contained so it never touches a pending action.
     function runStatusOp(id) {
@@ -128,6 +157,17 @@ ColumnLayout {
     onActiveChanged: {
         if (active) { busy = false; picker.currentIndex = Math.max(0, usableCards.findIndex(function(c) { return c.adminId === admin.preferredCard })); selectCard(usableCards.length ? picker.currentIndex : -1); preferredCard = "" }
         else { clearSecrets(); selected = null; message = ""; data.text = ""; opDialog.close() }
+    }
+    // Auto-select a card when the list populates (e.g. a card inserted while the tab is already
+    // open, so onActiveChanged did not fire). Keeps Details and Actions populated as soon as a
+    // card is readable, and clears the selection when the last card is removed.
+    onUsableCardsChanged: {
+        if (!active) return
+        if (usableCards.length === 0) { if (selected) selectCard(-1); return }
+        if (!selected || !usableCards.some(function(c) { return c.adminId === selected.adminId })) {
+            picker.currentIndex = 0
+            selectCard(0)
+        }
     }
     onChangedChanged: if (changed) { clearSecrets(); message = "The card or wallet changed. Select the card again before continuing."; failed = true; opDialog.close() }
     onActionChanged: { clearSecrets(); data.text = ""; message = ""; if (action !== "") opDialog.open() }
@@ -171,22 +211,81 @@ ColumnLayout {
         ColumnLayout {
         width: adminScroll.availableWidth
         spacing: Theme.spacing.small
-        LogosText { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Manage a physical Keycard in a direct reader. Shell USB does not expose these operations; move its card to a reader." }
-        LogosText { Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small; text: "Select card"; font.pixelSize: Theme.typography.subtitleText; font.weight: Theme.typography.weightBold; color: Theme.palette.text }
         RowLayout {
-            Layout.fillWidth: true
-            LogosComboBox { id: picker; objectName: "adminCardPicker"; Layout.fillWidth: true; enabled: !admin.busy; model: admin.usableCards.map(function(c) { return c.reader + " · " + c.adminId.split(":").pop().slice(0,12) }); onActivated: admin.selectCard(currentIndex) }
-            LogosButton { objectName: "adminRefresh"; text: "Refresh card"; enabled: !admin.busy; onClicked: logos.watch(admin.backend.refresh(), function() { admin.selectCard(picker.currentIndex) }) }
-        }
-        LogosText { Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small; text: "Card status"; font.pixelSize: Theme.typography.subtitleText; font.weight: Theme.typography.weightBold; color: Theme.palette.text }
-        LogosText { visible: !admin.selected; text: "Insert a Keycard in a reader. If its identity is untrusted, review the trust prompt in the main view first."; Layout.fillWidth: true; wrapMode: Text.WordWrap }
-        LogosText { visible: !!admin.selected; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere; textFormat: Text.PlainText; color: Theme.palette.textSecondary; text: admin.selected ? "Card: " + admin.selected.adminId + "\n" + (admin.selected.initialized ? "Keycard " + admin.selected.version + (admin.selected.keyUid ? " · Holds private keys" : " · No keys") : "Not set up") : "" }
-        RowLayout {
-            visible: !!admin.selected && !admin.changed
-            Layout.fillWidth: true; Layout.topMargin: Theme.spacing.tiny; spacing: Theme.spacing.small
-            LogosButton { objectName: "statusDetails"; text: "Card details"; enabled: !admin.busy; onClicked: admin.runStatusOp("status") }
-            LogosButton { objectName: "statusCheckAuthenticity"; text: "Check authenticity"; enabled: !admin.busy; onClicked: admin.runStatusOp("check_identity") }
+            visible: admin.usableCards.length > 0
+            Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small; spacing: Theme.spacing.small
+            LogosText { text: "Select card"; font.pixelSize: Theme.typography.subtitleText; font.weight: Theme.typography.weightBold; color: Theme.palette.text }
             Item { Layout.fillWidth: true }
+            LogosLink { objectName: "howToConnectLink"; text: "How to connect a card"; onActivated: connectHelpDialog.open() }
+        }
+        RowLayout {
+            visible: admin.usableCards.length > 0
+            Layout.fillWidth: true
+            LogosComboBox { id: picker; objectName: "adminCardPicker"; Layout.fillWidth: true; enabled: !admin.busy; model: admin.usableCards.map(function(c) { return (admin.cardName(c) || "No name") + " · " + c.adminId.split(":").pop().slice(0,8) + " · " + c.reader }); onActivated: admin.selectCard(currentIndex) }
+            LogosIconButton { objectName: "adminRefresh"; iconSource: Qt.resolvedUrl("assets/refresh.svg"); enabled: !admin.busy; onClicked: logos.watch(admin.backend.refresh(), function() { admin.selectCard(picker.currentIndex) }) }
+        }
+        LogosDialog {
+            id: connectHelpDialog
+            objectName: "connectHelpDialog"
+            title: "Connecting a Keycard"
+            parent: Overlay.overlay
+            anchors.centerIn: parent
+            width: Math.min((parent ? parent.width : 600) - 40, 480)
+            closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+            contentItem: ColumnLayout {
+                spacing: Theme.spacing.small
+                LogosText { Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.text; text: "Administration works on a physical Keycard in a direct smart-card reader connected over USB." }
+                LogosText { Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.textSecondary; text: "A Keycard Shell connection is for signing and accounts only; it does not expose card administration. To administer a card that is in a Shell, move the card into a direct reader." }
+                RowLayout {
+                    Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small; spacing: Theme.spacing.tiny
+                    LogosLink { text: "Get a reader"; href: "https://keycard.tech/products/keycard-reader-for-desktop"; onActivated: function(url) { getReaderCopy.copy(); Qt.openUrlExternally(url) } }
+                    LogosCopyButton { id: getReaderCopy; value: "https://keycard.tech/products/keycard-reader-for-desktop"; feedbackText: "URL copied"; size: 24; iconSize: 14 }
+                    Item { Layout.fillWidth: true }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Item { Layout.fillWidth: true }
+                    LogosButton { text: "Close"; onClicked: connectHelpDialog.close() }
+                }
+            }
+        }
+        ColumnLayout {
+            visible: admin.usableCards.length === 0
+            Layout.fillWidth: true; Layout.topMargin: Theme.spacing.xxlarge; Layout.alignment: Qt.AlignHCenter; spacing: Theme.spacing.small
+            LogosText { Layout.alignment: Qt.AlignHCenter; horizontalAlignment: Text.AlignHCenter; font.pixelSize: Theme.typography.subtitleText; font.weight: Theme.typography.weightBold; color: Theme.palette.text; text: "No Keycard to administer" }
+            LogosText { Layout.alignment: Qt.AlignHCenter; Layout.maximumWidth: 420; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; color: Theme.palette.textSecondary; text: "To administer a card, connect it over USB in a card reader. A Keycard Shell is for signing only; move its card into a reader." }
+            RowLayout {
+                Layout.alignment: Qt.AlignHCenter; spacing: Theme.spacing.tiny
+                LogosLink { text: "Get a reader"; href: "https://keycard.tech/products/keycard-reader-for-desktop"; onActivated: function(url) { emptyGetReaderCopy.copy(); Qt.openUrlExternally(url) } }
+                LogosCopyButton { id: emptyGetReaderCopy; value: "https://keycard.tech/products/keycard-reader-for-desktop"; feedbackText: "URL copied"; size: 24; iconSize: 14 }
+            }
+        }
+        LogosText { visible: admin.usableCards.length > 0; Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small; text: "Details"; font.pixelSize: Theme.typography.subtitleText; font.weight: Theme.typography.weightBold; color: Theme.palette.text }
+        Rectangle {
+            visible: !!admin.selected && !admin.changed
+            Layout.fillWidth: true
+            Layout.preferredHeight: detailsCol.implicitHeight + 2 * Theme.spacing.small
+            radius: Theme.spacing.radiusLarge
+            color: Theme.palette.backgroundSecondary
+            border.width: 1; border.color: Theme.palette.borderSubtle
+            ColumnLayout {
+                id: detailsCol
+                anchors { left: parent.left; right: parent.right; top: parent.top; margins: Theme.spacing.small }
+                spacing: Theme.spacing.tiny
+                RowLayout {
+                    Layout.fillWidth: true; spacing: Theme.spacing.small
+                    LogosText { Layout.fillWidth: true; Layout.alignment: Qt.AlignVCenter; wrapMode: Text.WrapAnywhere; textFormat: Text.PlainText; color: Theme.palette.text; text: "Card name:  " + (admin.selected ? (admin.cardName(admin.selected) || "No name") : "") }
+                    LogosButton { objectName: "statusDetails"; text: "More details"; enabled: !admin.busy; onClicked: admin.runStatusOp("status") }
+                }
+                RowLayout {
+                    Layout.fillWidth: true; spacing: Theme.spacing.tiny
+                    LogosText { wrapMode: Text.WrapAnywhere; textFormat: Text.PlainText; color: Theme.palette.textSecondary; text: admin.selected ? "Fingerprint:  " + admin.selected.adminId.split(":").pop() : "" }
+                    LogosCopyButton { visible: !!admin.selected; value: admin.selected ? admin.selected.adminId.split(":").pop() : ""; feedbackText: "Fingerprint copied"; size: 24; iconSize: 14 }
+                    Item { Layout.fillWidth: true }
+                }
+                LogosText { Layout.fillWidth: true; textFormat: Text.PlainText; color: Theme.palette.textSecondary; text: admin.selected ? "Version:  " + (admin.selected.initialized ? "Keycard " + admin.selected.version : "Not set up") : "" }
+                LogosText { Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText; color: Theme.palette.textSecondary; text: "Authenticity:  " + (admin.authenticity || "—") }
+            }
         }
         LogosText {
             visible: !!admin.selected && !admin.changed && admin.choices.length > 0
@@ -195,20 +294,24 @@ ColumnLayout {
         Repeater {
             model: admin.actionGroups
             delegate: ColumnLayout {
+                id: groupItem
                 required property var modelData
-                Layout.fillWidth: true; spacing: 2
+                Layout.fillWidth: true; spacing: Theme.spacing.tiny
                 visible: !!admin.selected && !admin.changed
                 LogosText {
                     Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small
-                    text: modelData.name; font.pixelSize: Theme.typography.secondaryText
-                    color: modelData.danger ? Theme.palette.error : Theme.palette.textSecondary
+                    text: groupItem.modelData.advanced ? ((admin.advancedOpen ? "▾  " : "▸  ") + groupItem.modelData.name) : groupItem.modelData.name
+                    font.pixelSize: Theme.typography.secondaryText
+                    color: groupItem.modelData.danger ? Theme.palette.error : Theme.palette.textSecondary
+                    TapHandler { enabled: !!groupItem.modelData.advanced; onTapped: admin.advancedOpen = !admin.advancedOpen }
                 }
                 Repeater {
-                    model: modelData.items
+                    model: groupItem.modelData.items
                     delegate: LogosButton {
                         required property var modelData
                         objectName: "adminAction_" + modelData.id
                         Layout.fillWidth: true
+                        visible: !groupItem.modelData.advanced || admin.advancedOpen
                         enabled: !!admin.selected && !admin.busy && !admin.changed
                         text: (admin.action === modelData.id ? "●  " : "") + modelData.label
                         onClicked: operation.currentIndex = admin.choices.findIndex(function(o) { return o.id === modelData.id })
