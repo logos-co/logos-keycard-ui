@@ -38,6 +38,20 @@ LogosDialog {
         return ops
     }
     readonly property string action: choices[operation.currentIndex] ? choices[operation.currentIndex].id : ""
+    // ADR-A: present the available actions as a visible, risk-grouped list instead of one dropdown.
+    // Only actions available for the current card state appear (reuse `choices`); the destructive
+    // tier is the set that already carries a typed-confirmation gate. `adminOperation` stays as the
+    // hidden backing model so the selection source of truth, and the doctests, are unchanged.
+    readonly property var actionGroups: {
+        var tiers = [
+            {name:"Routine", danger:false, ids:["status","check_identity"]},
+            {name:"Set up and keys", danger:false, ids:["initialize","pair","generate_phrase","load_phrase","verify_phrase","change_pin","change_puk","unblock_pin","change_pairing_password","unpair","set_name","set_ndef","read_data"]},
+            {name:"Destructive", danger:true, ids:["write_data","generate_key","remove_key","factory_reset"]}
+        ]
+        var byId = {}; choices.forEach(function(o) { byId[o.id] = o })
+        return tiers.map(function(t) { return {name:t.name, danger:t.danger, items: t.ids.filter(function(id) { return byId[id] }).map(function(id) { return byId[id] })} })
+                    .filter(function(g) { return g.items.length > 0 })
+    }
     readonly property bool needsPin: ["check_identity","status","initialize","pair","factory_reset","unblock_pin","read_data"].indexOf(action) < 0
     readonly property bool needsNewPin: ["initialize","change_pin","unblock_pin"].indexOf(action) >= 0
     readonly property bool needsPuk: ["initialize","change_puk","unblock_pin"].indexOf(action) >= 0
@@ -109,7 +123,35 @@ LogosDialog {
         }
         LogosText { visible: !admin.selected; text: "Insert a Keycard in a reader. If its identity is untrusted, review the trust prompt in the main view first."; Layout.fillWidth: true; wrapMode: Text.WordWrap }
         LogosText { visible: !!admin.selected; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere; textFormat: Text.PlainText; color: Theme.palette.textSecondary; text: admin.selected ? "Card: " + admin.selected.adminId + "\n" + (admin.selected.initialized ? "Keycard " + admin.selected.version + (admin.selected.keyUid ? " · Holds recovery keys" : " · No recovery keys") : "Not set up") : "" }
-        LogosComboBox { id: operation; objectName: "adminOperation"; Layout.fillWidth: true; model: admin.choices.map(function(o) { return o.label }); enabled: !!admin.selected && !admin.busy && !admin.changed }
+        LogosText {
+            visible: !!admin.selected && !admin.changed && admin.choices.length > 0
+            Layout.fillWidth: true; text: "Choose an action"; color: Theme.palette.textSecondary; font.pixelSize: Theme.typography.secondaryText
+        }
+        Repeater {
+            model: admin.actionGroups
+            delegate: ColumnLayout {
+                required property var modelData
+                Layout.fillWidth: true; spacing: 2
+                visible: !!admin.selected && !admin.changed
+                LogosText {
+                    Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small
+                    text: modelData.name; font.pixelSize: Theme.typography.secondaryText
+                    color: modelData.danger ? Theme.palette.error : Theme.palette.textSecondary
+                }
+                Repeater {
+                    model: modelData.items
+                    delegate: LogosButton {
+                        required property var modelData
+                        objectName: "adminAction_" + modelData.id
+                        Layout.fillWidth: true
+                        enabled: !!admin.selected && !admin.busy && !admin.changed
+                        text: (admin.action === modelData.id ? "●  " : "") + modelData.label
+                        onClicked: operation.currentIndex = admin.choices.findIndex(function(o) { return o.id === modelData.id })
+                    }
+                }
+            }
+        }
+        LogosComboBox { id: operation; objectName: "adminOperation"; visible: false; Layout.fillWidth: true; model: admin.choices.map(function(o) { return o.label }); enabled: !!admin.selected && !admin.busy && !admin.changed }
         LogosScrollView {
             id: form; Layout.fillWidth: true; Layout.fillHeight: true; contentWidth: availableWidth
             ColumnLayout {
