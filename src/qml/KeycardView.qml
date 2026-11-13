@@ -44,11 +44,16 @@ Item {
     // (no reader vs empty reader vs reader-present-but-PCSC-rejected) need keycard_module to
     // report bare readers; tracked upstream. Here we honestly show what we can see.
     readonly property bool anyConnected: cards.length > 0 || shellDevices.length > 0
+    // card present (green) is reliable. A bare reader cannot be told from no reader at all,
+    // since keycard_module.cards() reports only readers that hold a card, so the empty case is
+    // one honest "No card detected" (warning) until the module reports bare readers.
     readonly property string connLabel: !ready ? (startupStalled ? "Not responding" : "Starting")
-        : cards.length > 0 ? "Card reader connected"
+        : cards.length > 0 ? "Card connected"
         : shellDevices.length > 0 ? "Shell connected"
-        : "No Keycard in a reader"
-    readonly property color connColor: !ready && startupStalled ? Theme.palette.warning : anyConnected ? Theme.palette.success : Theme.palette.textSecondary
+        : "No card detected"
+    readonly property color connColor: !ready ? (startupStalled ? Theme.palette.warning : Theme.palette.textSecondary)
+        : anyConnected ? Theme.palette.success
+        : Theme.palette.warning
     readonly property var exporting: ready ? j(backend.exportJson, "{}") : ({})
     readonly property bool working: exporting.state === "working" || exporting.state === "confirm_on_device"
     property string selectedWalletId: ""
@@ -137,7 +142,7 @@ Item {
                 spacing: 0
                 RowLayout {
                     spacing: Theme.spacing.tiny
-                    LogosText { text: "Keycard"; font.pixelSize: 22 }
+                    LogosText { text: "Keycard"; color: Theme.palette.text; font.pixelSize: 28; font.weight: Theme.typography.weightBold }
                     LogosInfoButton { objectName: "keycardWalletInfo"; title: "One wallet per seed"; Accessible.name: "Help: One wallet per seed"; text: "Wallets are identified by a hash of the full master public key. Cards holding the same seed share one wallet, across readers and USB Shells. A different recovery passphrase creates a different wallet. Identify an older Shell wallet once and confirm its public-key requests to link its saved accounts. Previous wallet and account names are retained. A Shell connection means USB is present, not that this seed is inside. Any connected Shell can be used. The first use of each USB connection asks you to confirm the master public key. Subsequent signatures reuse that verification until the Shell disconnects or the app restarts. Use Verify wallet… on the wallet to request a fresh check at any time. Every returned signature is checked against the selected account. If the card has a different seed, the result is rejected; insert the correct card and retry. Names are saved on this computer." }
                 }
                 LogosText { text: "Wallets and card administration"; color: Theme.palette.textSecondary; font.pixelSize: Theme.typography.secondaryText }

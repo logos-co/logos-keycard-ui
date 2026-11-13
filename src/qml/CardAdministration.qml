@@ -21,21 +21,52 @@ ColumnLayout {
     property string preferredCard: ""
     property bool busy: false
     property bool failed: false
+    // Result/status line shown under the form. Must be declared: assignments to an undeclared
+    // property throw in QML strict mode, which aborted perform()/runStatusOp after busy=true and
+    // left every admin action locked on a real card. (Pre-existing; surfaced in live dogfood.)
+    property string message: ""
+    // Title for the op dialog when a no-form status op (Card details / authenticity) is running.
+    property string infoTitle: ""
     property var generated: []
     readonly property bool changed: !!selected && !usableCards.some(function(c) { return c.reader === selected.reader && c.adminId === selected.adminId && (c.keyUid || "") === (selected.keyUid || "") })
+    // Actions available for the current card state. Gating mirrors the Status desktop
+    // Keycard management UI (DetailsView.qml + KeycardStateInfo.qml); see
+    // docs/keycard-state-action-map.md. status + check_identity are read-only info, not
+    // actions (surfaced as buttons in the Card status section via runStatusOp).
     readonly property var choices: {
         if (!selected) return []
+        // No PIN yet: the only thing you can do is set the card up.
         if (!selected.initialized) return [{id:"initialize",label:"Set up card"}]
-        var ops = [{id:"status",label:"Card status"},{id:"check_identity",label:"Check card authenticity"}]
-        if (selected.secureChannel === 1 && !selected.paired) ops.push({id:"pair",label:"Pair this app"})
-        else {
-            ops = ops.concat([{id:"generate_phrase",label:"Create recovery phrase"},{id:"load_phrase",label:"Import recovery phrase"},{id:"verify_phrase",label:"Check recovery phrase"},
-                {id:"change_pin",label:"Change PIN"},{id:"change_puk",label:"Change PUK"},{id:"unblock_pin",label:"Unblock PIN"}])
-            if (selected.secureChannel === 1) ops = ops.concat([{id:"change_pairing_password",label:"Change pairing password"},{id:"unpair",label:"Remove a pairing slot"}])
-            ops = ops.concat([{id:"set_name",label:"Name stored on card"},{id:"set_ndef",label:"NFC text message"},{id:"read_data",label:"Read card data (advanced)"},{id:"write_data",label:"Write card data (advanced)"},
-                {id:"generate_key",label:"Generate keys without backup (advanced)"},{id:"remove_key",label:"Erase keys from card"}])
+        // A 3.x card that isn't paired: pair before anything else is possible.
+        if (selected.secureChannel === 1 && !selected.paired) return [{id:"pair",label:"Pair this app"}]
+
+        var hasKeys = !!selected.keyUid                      // Status hasKeyPair: a seed is present
+        var locked = selected.pinRetries === 0               // Status isBlockedPIN: PIN locked
+        var canReset = (selected.capabilities & 16) !== 0
+
+        // PIN locked: recovery only. Everything that needs the current PIN is hidden.
+        if (locked) {
+            var r = [{id:"unblock_pin",label:"Unblock PIN"}]
+            if (canReset) r.push({id:"factory_reset",label:"Factory reset card"})
+            return r
         }
-        if ((selected.capabilities & 16) !== 0) ops.push({id:"factory_reset",label:"Factory reset card"})
+
+        var ops = []
+        // Seed provisioning only while the card holds no seed; seed-present ops otherwise.
+        if (!hasKeys) {
+            ops = ops.concat([{id:"generate_phrase",label:"Create recovery phrase"},
+                {id:"load_phrase",label:"Import recovery phrase"},
+                {id:"generate_key",label:"Generate keys without backup (advanced)"}])
+        } else {
+            ops = ops.concat([{id:"verify_phrase",label:"Check recovery phrase"},
+                {id:"remove_key",label:"Erase keys from card"}])
+        }
+        // Credential + metadata: any usable card (has PIN, not locked).
+        ops = ops.concat([{id:"change_pin",label:"Change PIN"},{id:"change_puk",label:"Change PUK"}])
+        if (selected.secureChannel === 1) ops = ops.concat([{id:"change_pairing_password",label:"Change pairing password"},{id:"unpair",label:"Remove a pairing slot"}])
+        ops = ops.concat([{id:"set_name",label:"Name stored on card"},{id:"set_ndef",label:"NFC text message"},
+            {id:"read_data",label:"Read card data (advanced)"},{id:"write_data",label:"Write card data (advanced)"}])
+        if (canReset) ops.push({id:"factory_reset",label:"Factory reset card"})
         return ops
     }
     readonly property string action: choices[operation.currentIndex] ? choices[operation.currentIndex].id : ""
@@ -45,7 +76,6 @@ ColumnLayout {
     // hidden backing model so the selection source of truth, and the doctests, are unchanged.
     readonly property var actionGroups: {
         var tiers = [
-            {name:"Routine", danger:false, ids:["status","check_identity"]},
             {name:"Set up and keys", danger:false, ids:["initialize","pair","generate_phrase","load_phrase","verify_phrase","change_pin","change_puk","unblock_pin","change_pairing_password","unpair","set_name","set_ndef","read_data"]},
             {name:"Destructive", danger:true, ids:["write_data","generate_key","remove_key","factory_reset"]}
         ]
@@ -76,13 +106,31 @@ ColumnLayout {
         return ""
     }
     function clearSecrets() { advanced.checked = false; customPairing.checked = false; pin.text = ""; newPin.text = ""; repeatPin.text = ""; puk.text = ""; repeatPuk.text = ""; pairing.text = ""; repeatPairing.text = ""; alternate.text = ""; repeatAlternate.text = ""; phrase.text = ""; passphrase.text = ""; generated = []; backedUp.checked = false; confirm.text = "" }
-    function selectCard(index) { clearSecrets(); selected = index >= 0 ? usableCards[index] : null; operation.currentIndex = 0; message = "" }
+    function selectCard(index) { clearSecrets(); selected = index >= 0 ? usableCards[index] : null; operation.currentIndex = -1; message = ""; if (typeof opDialog !== "undefined") opDialog.close() }
+    // Card status and authenticity need no PIN; run them directly from the status section
+    // without the action/confirm flow. Self-contained so it never touches a pending action.
+    function runStatusOp(id) {
+        if (!selected || busy || changed) return
+        infoTitle = id === "check_identity" ? "Card authenticity" : "Card details"
+        opDialog.open()
+        busy = true; message = "Working with the card…"; failed = false
+        var p = {action:id, reader:selected.reader, cardId:selected.adminId, keyUid:selected.keyUid || ""}
+        logos.watch(backend.administer(JSON.stringify(p)), function(raw) {
+            busy = false
+            var r
+            try { r = JSON.parse(raw) } catch(e) { r = {ok:false, error:"The card did not return a valid response. Refresh its status before retrying."} }
+            failed = !r.ok || r.genuine === false
+            message = r.ok ? (r.message || "Done.") : (r.error || "Operation failed.")
+            if (r.ok && id === "status") message += (r.cardName ? "\nName on card: " + r.cardName : "") + "\nPIN attempts left: " + r.pinRetries + " · PUK attempts left: " + r.pukRetries + "\nPrivate keys: " + (r.hasKey ? "present" : "not loaded") + (selected.secureChannel === 1 ? "\nFree pairing slots: " + r.freePairingSlots + " · This app's slot: " + r.pairingSlot : "")
+            r = null
+        })
+    }
     onActiveChanged: {
         if (active) { busy = false; picker.currentIndex = Math.max(0, usableCards.findIndex(function(c) { return c.adminId === admin.preferredCard })); selectCard(usableCards.length ? picker.currentIndex : -1); preferredCard = "" }
-        else { clearSecrets(); selected = null; message = ""; data.text = "" }
+        else { clearSecrets(); selected = null; message = ""; data.text = ""; opDialog.close() }
     }
-    onChangedChanged: if (changed) { clearSecrets(); message = "The card or wallet changed. Select the card again before continuing."; failed = true }
-    onActionChanged: { clearSecrets(); data.text = ""; message = "" }
+    onChangedChanged: if (changed) { clearSecrets(); message = "The card or wallet changed. Select the card again before continuing."; failed = true; opDialog.close() }
+    onActionChanged: { clearSecrets(); data.text = ""; message = ""; if (action !== "") opDialog.open() }
     function perform() {
         if (!selected || changed || busy) return
         var op = loadingGenerated ? "load_phrase" : action
@@ -110,14 +158,18 @@ ColumnLayout {
             failed = !r.ok || r.genuine === false; message = r.ok ? r.message || "Done." : r.error || "Operation failed."
             if (r.phrase) generated = r.phrase.split(" ")
             if (r.ok && op === "load_phrase") generated = []
-            if (r.ok && op === "status") message += (r.cardName ? "\nName on card: " + r.cardName : "") + "\nPIN attempts left: " + r.pinRetries + " · PUK attempts left: " + r.pukRetries + "\nRecovery keys: " + (r.hasKey ? "present" : "not loaded") + (selected.secureChannel === 1 ? "\nFree pairing slots: " + r.freePairingSlots + " · This app's slot: " + r.pairingSlot : "")
+            if (r.ok && op === "status") message += (r.cardName ? "\nName on card: " + r.cardName : "") + "\nPIN attempts left: " + r.pinRetries + " · PUK attempts left: " + r.pukRetries + "\nPrivate keys: " + (r.hasKey ? "present" : "not loaded") + (selected.secureChannel === 1 ? "\nFree pairing slots: " + r.freePairingSlots + " · This app's slot: " + r.pairingSlot : "")
             if (r.data !== undefined) data.text = r.data
             r = null
         })
         request = ""
     }
-    ColumnLayout {
+    LogosScrollView {
+        id: adminScroll
         Layout.fillWidth: true; Layout.fillHeight: true
+        contentWidth: availableWidth
+        ColumnLayout {
+        width: adminScroll.availableWidth
         spacing: Theme.spacing.small
         LogosText { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Manage a physical Keycard in a direct reader. Shell USB does not expose these operations; move its card to a reader." }
         LogosText { Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small; text: "Select card"; font.pixelSize: Theme.typography.subtitleText; font.weight: Theme.typography.weightBold; color: Theme.palette.text }
@@ -128,7 +180,14 @@ ColumnLayout {
         }
         LogosText { Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small; text: "Card status"; font.pixelSize: Theme.typography.subtitleText; font.weight: Theme.typography.weightBold; color: Theme.palette.text }
         LogosText { visible: !admin.selected; text: "Insert a Keycard in a reader. If its identity is untrusted, review the trust prompt in the main view first."; Layout.fillWidth: true; wrapMode: Text.WordWrap }
-        LogosText { visible: !!admin.selected; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere; textFormat: Text.PlainText; color: Theme.palette.textSecondary; text: admin.selected ? "Card: " + admin.selected.adminId + "\n" + (admin.selected.initialized ? "Keycard " + admin.selected.version + (admin.selected.keyUid ? " · Holds recovery keys" : " · No recovery keys") : "Not set up") : "" }
+        LogosText { visible: !!admin.selected; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere; textFormat: Text.PlainText; color: Theme.palette.textSecondary; text: admin.selected ? "Card: " + admin.selected.adminId + "\n" + (admin.selected.initialized ? "Keycard " + admin.selected.version + (admin.selected.keyUid ? " · Holds private keys" : " · No keys") : "Not set up") : "" }
+        RowLayout {
+            visible: !!admin.selected && !admin.changed
+            Layout.fillWidth: true; Layout.topMargin: Theme.spacing.tiny; spacing: Theme.spacing.small
+            LogosButton { objectName: "statusDetails"; text: "Card details"; enabled: !admin.busy; onClicked: admin.runStatusOp("status") }
+            LogosButton { objectName: "statusCheckAuthenticity"; text: "Check authenticity"; enabled: !admin.busy; onClicked: admin.runStatusOp("check_identity") }
+            Item { Layout.fillWidth: true }
+        }
         LogosText {
             visible: !!admin.selected && !admin.changed && admin.choices.length > 0
             Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small; text: "Actions"; font.pixelSize: Theme.typography.subtitleText; font.weight: Theme.typography.weightBold; color: Theme.palette.text
@@ -158,11 +217,24 @@ ColumnLayout {
             }
         }
         LogosComboBox { id: operation; objectName: "adminOperation"; visible: false; Layout.fillWidth: true; model: admin.choices.map(function(o) { return o.label }); enabled: !!admin.selected && !admin.busy && !admin.changed }
-        LogosScrollView {
-            id: form; Layout.fillWidth: true; Layout.fillHeight: true; contentWidth: availableWidth
-            ColumnLayout {
-                width: form.availableWidth; spacing: Theme.spacing.small
-                enabled: !admin.busy && !admin.changed && !!admin.selected
+        LogosDialog {
+            id: opDialog
+            objectName: "adminOpDialog"
+            title: admin.infoTitle !== "" ? admin.infoTitle : (admin.choices[operation.currentIndex] ? admin.choices[operation.currentIndex].label : "Card action")
+            parent: Overlay.overlay
+            anchors.centerIn: parent
+            width: Math.min((parent ? parent.width : 600) - 40, 560)
+            closePolicy: admin.busy ? Popup.NoAutoClose : (Popup.CloseOnEscape | Popup.CloseOnPressOutside)
+            onClosed: if (!admin.busy) { admin.infoTitle = ""; operation.currentIndex = -1 }
+            contentItem: ColumnLayout {
+                spacing: Theme.spacing.small
+                LogosScrollView {
+                    id: form; Layout.fillWidth: true; Layout.maximumHeight: 460; Layout.preferredHeight: Math.min(formCol.implicitHeight + 8, 460); contentWidth: availableWidth
+                    visible: !!admin.action
+                    ColumnLayout {
+                        id: formCol
+                        width: form.availableWidth; spacing: Theme.spacing.small
+                        enabled: !admin.busy && !admin.changed && !!admin.selected
                 LogosText { visible: admin.action === "factory_reset" || admin.action === "remove_key"; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.error; text: admin.action === "factory_reset" ? "Factory reset erases this card's keys, PIN, PUK, pairings and card metadata. It requires no PIN. You need a recovery backup to restore access to funds. Saved wallet names and accounts on this computer are retained." : "Erase the recovery keys from this card. You need a recovery backup to restore access to funds. PIN, PUK and pairings remain. Saved accounts on this computer are retained." }
                 LogosText { visible: admin.action === "generate_key"; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.error; text: "Generates keys inside an empty card with NO recovery phrase. If this card is lost or reset, its wallet cannot be recovered. Use Create recovery phrase for a recoverable wallet." }
                 LogosText { visible: admin.loadsKeys && admin.holdsKeys; Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "This card already holds keys. Erase keys explicitly before loading a different wallet."; color: Theme.palette.error }
@@ -215,28 +287,33 @@ ColumnLayout {
                 LogosTextField { id: data; objectName: "adminData"; visible: ["set_name","set_ndef","read_data","write_data"].indexOf(admin.action) >= 0; Layout.fillWidth: true; readOnly: admin.action === "read_data"; placeholderText: admin.action === "set_name" ? "Card name (20 ASCII characters)" : admin.action === "set_ndef" ? "Public NFC text (empty clears it)" : "Hexadecimal data" }
                 LogosText { visible: admin.action === "set_name" || admin.action === "set_ndef"; Layout.fillWidth: true; wrapMode: Text.WordWrap; text: admin.action === "set_name" ? "This name travels with the physical card. It does not rename the seed wallet on this computer." : "NFC text is public and can be read without a PIN. Do not put secrets here." }
                 LogosTextField { id: confirm; objectName: "adminConfirmation"; visible: !!admin.confirmation; Layout.fillWidth: true; placeholderText: "Type " + admin.confirmation + " to confirm" }
+                    }
+                }
+                LogosText { objectName: "adminBusy"; visible: admin.busy; text: "Working with the card…"; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.textSecondary }
+                LogosText { objectName: "adminResult"; visible: !!admin.message && !admin.busy; text: admin.message; textFormat: Text.PlainText; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere; color: admin.failed ? Theme.palette.error : Theme.palette.text }
+                LogosText { objectName: "adminBlocked"; visible: !!admin.blocked && !!admin.action && !admin.busy; text: admin.blocked; Layout.fillWidth: true; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignRight; font.pixelSize: Theme.typography.secondaryText; color: Theme.palette.textSecondary }
+                RowLayout {
+                    Layout.fillWidth: true
+                    LogosButton { objectName: "adminClose"; text: admin.busy ? "Working…" : "Close"; enabled: !admin.busy; onClicked: opDialog.close() }
+                    Item { Layout.fillWidth: true }
+                    LogosButton {
+                        objectName: "adminSubmit"; visible: !!admin.action; text: admin.loadingGenerated ? "Load backed-up phrase" : admin.action === "generate_phrase" ? "Generate phrase" : admin.action === "factory_reset" ? "Reset card" : admin.action === "remove_key" ? "Erase keys" : "Continue"
+                        enabled: !!admin.selected && !admin.changed && !admin.busy && !!admin.action
+                            && (!admin.needsPin || pin.text.length === 6)
+                            && (!admin.needsNewPin || (newPin.text.length === 6 && newPin.text === repeatPin.text))
+                            && (!admin.needsPuk || (puk.text.length === 12 && (admin.action === "unblock_pin" || puk.text === repeatPuk.text)))
+                            && (!admin.needsPairing || (pairing.text.length > 0 && (admin.action === "pair" || pairing.text === repeatPairing.text)))
+                            && (!alternate.visible || !alternate.text || (alternate.text.length === 6 && alternate.text === repeatAlternate.text))
+                            && (!admin.needsPhrase || phrase.text.trim().length > 0)
+                            && (!(admin.action === "load_phrase" || admin.loadingGenerated) || backedUp.checked)
+                            && (!admin.confirmation || confirm.text === admin.confirmation)
+                            && (admin.action !== "unpair" || slot.text.length === 1)
+                            && !(admin.loadsKeys && admin.holdsKeys)
+                        onClicked: admin.perform()
+                    }
+                }
             }
         }
-        LogosText { objectName: "adminResult"; text: admin.message; textFormat: Text.PlainText; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere; color: admin.failed ? Theme.palette.error : Theme.palette.textSecondary }
-        LogosText { objectName: "adminBlocked"; visible: !!admin.blocked; text: admin.blocked; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.textSecondary }
-        RowLayout {
-            Layout.fillWidth: true
-            Item { Layout.fillWidth: true }
-            LogosButton {
-                objectName: "adminSubmit"; text: admin.loadingGenerated ? "Load backed-up phrase" : admin.action === "generate_phrase" ? "Generate phrase" : admin.action === "factory_reset" ? "Reset card" : admin.action === "remove_key" ? "Erase keys" : "Continue"
-                enabled: !!admin.selected && !admin.changed && !admin.busy && !!admin.action
-                    && (!admin.needsPin || pin.text.length === 6)
-                    && (!admin.needsNewPin || (newPin.text.length === 6 && newPin.text === repeatPin.text))
-                    && (!admin.needsPuk || (puk.text.length === 12 && (admin.action === "unblock_pin" || puk.text === repeatPuk.text)))
-                    && (!admin.needsPairing || (pairing.text.length > 0 && (admin.action === "pair" || pairing.text === repeatPairing.text)))
-                    && (!alternate.visible || !alternate.text || (alternate.text.length === 6 && alternate.text === repeatAlternate.text))
-                    && (!admin.needsPhrase || phrase.text.trim().length > 0)
-                    && (!(admin.action === "load_phrase" || admin.loadingGenerated) || backedUp.checked)
-                    && (!admin.confirmation || confirm.text === admin.confirmation)
-                    && (admin.action !== "unpair" || slot.text.length === 1)
-                    && !(admin.loadsKeys && admin.holdsKeys)
-                onClicked: admin.perform()
-            }
         }
     }
 }
