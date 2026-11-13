@@ -205,6 +205,22 @@ sections:
               value: "Trusted: this card is used though Keycard didn't sign it."
               timeout: 10000
               screenshot: "keycard-ui-trusted.png"
+            - name: "Open the Administration area"
+              action: click_object
+              find_by: "objectName"
+              find_value: "areaAdministration"
+            - name: "Administration area shows the inline panel"
+              action: expect_property
+              find_by: "objectName"
+              find_value: "cardAdministrationPanel"
+              property: "visible"
+              value: true
+              timeout: 10000
+              screenshot: "keycard-ui-admin.png"
+            - name: "Back to Wallets"
+              action: click_object
+              find_by: "objectName"
+              find_value: "areaWallets"
             - name: "Nothing is left to review"
               action: expect_property
               find_by: "objectName"
