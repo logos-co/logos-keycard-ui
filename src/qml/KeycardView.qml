@@ -36,6 +36,15 @@ Item {
     }).map(function(d) { return {id: "shell:" + d.serial + ":", serial: d.serial, transport: "shell", connected: true, pending: true, accounts: [], connections: [{transport: "shell", serial: d.serial, connected: true}]} }))
     readonly property var accounts: ready ? j(backend.accountsJson, "[]") : []
     readonly property var unsigned: cards.filter(function(c) { return c.untrusted !== undefined })
+    // Header connection state, from signals the view already has. The finer negative cases
+    // (no reader vs empty reader vs reader-present-but-PCSC-rejected) need keycard_module to
+    // report bare readers; tracked upstream. Here we honestly show what we can see.
+    readonly property bool anyConnected: cards.length > 0 || shellDevices.length > 0
+    readonly property string connLabel: !ready ? "Starting"
+        : cards.length > 0 ? "Card reader connected"
+        : shellDevices.length > 0 ? "Shell connected"
+        : "No Keycard in a reader"
+    readonly property color connColor: anyConnected ? Theme.palette.success : Theme.palette.textSecondary
     readonly property var exporting: ready ? j(backend.exportJson, "{}") : ({})
     readonly property bool working: exporting.state === "working" || exporting.state === "confirm_on_device"
     property string selectedWalletId: ""
@@ -146,9 +155,11 @@ Item {
                 LogosInfoButton { objectName: "keycardWalletInfo"; title: "One wallet per seed"; Accessible.name: "Help: One wallet per seed"; text: "Wallets are identified by a hash of the full master public key. Cards holding the same seed share one wallet, across readers and USB Shells. A different recovery passphrase creates a different wallet. Identify an older Shell wallet once and confirm its public-key requests to link its saved accounts. Previous wallet and account names are retained. A Shell connection means USB is present, not that this seed is inside. Any connected Shell can be used. The first use of each USB connection asks you to confirm the master public key. Subsequent signatures reuse that verification until the Shell disconnects or the app restarts. Use Verify wallet… on the wallet to request a fresh check at any time. Every returned signature is checked against the selected account. If the card has a different seed, the result is rejected; insert the correct card and retry. Names are saved on this computer." }
                 Item { Layout.fillWidth: true }
                 LogosButton { objectName: "connectShell"; text: "Open wallet via USB…"; visible: root.shellDevices.length > 0; enabled: !root.working; onClicked: shellSheet.open() }
+                LogosBadge { objectName: "connectionStatus"; text: root.connLabel; color: root.connColor }
                 LogosButton { text: "Refresh"; enabled: root.ready && !root.working; onClicked: root.backend.refresh() }
             }
             LogosText {
+                visible: root.ready && root.cards.length === 0 && root.shellDevices.length === 0
                 Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.textSecondary
                 text: "Connect a Keycard reader or a Keycard Shell over USB. Your keys stay on the card."
             }
