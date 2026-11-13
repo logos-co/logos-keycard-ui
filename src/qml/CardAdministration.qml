@@ -120,16 +120,18 @@ ColumnLayout {
         Layout.fillWidth: true; Layout.fillHeight: true
         spacing: Theme.spacing.small
         LogosText { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Manage a physical Keycard in a direct reader. Shell USB does not expose these operations; move its card to a reader." }
+        LogosText { Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small; text: "Select card"; font.pixelSize: Theme.typography.subtitleText; font.weight: Theme.typography.weightBold; color: Theme.palette.text }
         RowLayout {
             Layout.fillWidth: true
             LogosComboBox { id: picker; objectName: "adminCardPicker"; Layout.fillWidth: true; enabled: !admin.busy; model: admin.usableCards.map(function(c) { return c.reader + " · " + c.adminId.split(":").pop().slice(0,12) }); onActivated: admin.selectCard(currentIndex) }
             LogosButton { objectName: "adminRefresh"; text: "Refresh card"; enabled: !admin.busy; onClicked: logos.watch(admin.backend.refresh(), function() { admin.selectCard(picker.currentIndex) }) }
         }
+        LogosText { Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small; text: "Card status"; font.pixelSize: Theme.typography.subtitleText; font.weight: Theme.typography.weightBold; color: Theme.palette.text }
         LogosText { visible: !admin.selected; text: "Insert a Keycard in a reader. If its identity is untrusted, review the trust prompt in the main view first."; Layout.fillWidth: true; wrapMode: Text.WordWrap }
         LogosText { visible: !!admin.selected; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere; textFormat: Text.PlainText; color: Theme.palette.textSecondary; text: admin.selected ? "Card: " + admin.selected.adminId + "\n" + (admin.selected.initialized ? "Keycard " + admin.selected.version + (admin.selected.keyUid ? " · Holds recovery keys" : " · No recovery keys") : "Not set up") : "" }
         LogosText {
             visible: !!admin.selected && !admin.changed && admin.choices.length > 0
-            Layout.fillWidth: true; text: "Choose an action"; color: Theme.palette.textSecondary; font.pixelSize: Theme.typography.secondaryText
+            Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small; text: "Actions"; font.pixelSize: Theme.typography.subtitleText; font.weight: Theme.typography.weightBold; color: Theme.palette.text
         }
         Repeater {
             model: admin.actionGroups

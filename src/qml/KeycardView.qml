@@ -153,13 +153,13 @@ Item {
         id: adminSheet; backend: root.backend; cards: root.cards
         active: areaTabs.currentIndex === 1; visible: areaTabs.currentIndex === 1
         anchors { top: appHeader.bottom; left: parent.left; right: parent.right; bottom: parent.bottom
-                  leftMargin: Theme.spacing.medium; rightMargin: Theme.spacing.medium; bottomMargin: Theme.spacing.medium; topMargin: Theme.spacing.small }
+                  leftMargin: Theme.spacing.medium; rightMargin: Theme.spacing.medium; bottomMargin: Theme.spacing.medium; topMargin: Theme.spacing.large }
     }
     LogosScrollView {
         id: scroll
         visible: areaTabs.currentIndex === 0
         anchors { top: appHeader.bottom; left: parent.left; right: parent.right; bottom: parent.bottom
-                  leftMargin: Theme.spacing.medium; rightMargin: Theme.spacing.medium; bottomMargin: Theme.spacing.medium; topMargin: Theme.spacing.small }
+                  leftMargin: Theme.spacing.medium; rightMargin: Theme.spacing.medium; bottomMargin: Theme.spacing.medium; topMargin: Theme.spacing.large }
         contentWidth: availableWidth
         ColumnLayout {
             width: scroll.availableWidth; spacing: Theme.spacing.medium
