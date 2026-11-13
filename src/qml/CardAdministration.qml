@@ -5,14 +5,15 @@ import Logos.Controls
 import Logos.Theme
 import "accountkit" as Accounts
 
-LogosDialog {
+ColumnLayout {
     id: admin
-    objectName: "cardAdministrationDialog"
-    title: "Card administration"
-    anchors.centerIn: parent
-    width: Math.min(parent.width - 40, 720)
-    height: Math.min(parent.height - 40, 780)
-    closePolicy: busy ? Popup.NoAutoClose : Popup.CloseOnEscape
+    objectName: "cardAdministrationPanel"
+    Layout.fillWidth: true
+    Layout.fillHeight: true
+    spacing: Theme.spacing.small
+    // ADR-A: administration is a top-level area, not a modal. `active` tracks whether the
+    // Administration tab is showing, replacing the dialog's open/close lifecycle.
+    property bool active: false
     property var backend
     property var cards: []
     readonly property var usableCards: cards.filter(function(c) { return !!c.adminId })
@@ -76,8 +77,10 @@ LogosDialog {
     }
     function clearSecrets() { advanced.checked = false; customPairing.checked = false; pin.text = ""; newPin.text = ""; repeatPin.text = ""; puk.text = ""; repeatPuk.text = ""; pairing.text = ""; repeatPairing.text = ""; alternate.text = ""; repeatAlternate.text = ""; phrase.text = ""; passphrase.text = ""; generated = []; backedUp.checked = false; confirm.text = "" }
     function selectCard(index) { clearSecrets(); selected = index >= 0 ? usableCards[index] : null; operation.currentIndex = 0; message = "" }
-    onOpened: { busy = false; picker.currentIndex = Math.max(0, usableCards.findIndex(function(c) { return c.adminId === admin.preferredCard })); selectCard(usableCards.length ? picker.currentIndex : -1); preferredCard = "" }
-    onClosed: { clearSecrets(); selected = null; message = ""; data.text = "" }
+    onActiveChanged: {
+        if (active) { busy = false; picker.currentIndex = Math.max(0, usableCards.findIndex(function(c) { return c.adminId === admin.preferredCard })); selectCard(usableCards.length ? picker.currentIndex : -1); preferredCard = "" }
+        else { clearSecrets(); selected = null; message = ""; data.text = "" }
+    }
     onChangedChanged: if (changed) { clearSecrets(); message = "The card or wallet changed. Select the card again before continuing."; failed = true }
     onActionChanged: { clearSecrets(); data.text = ""; message = "" }
     function perform() {
@@ -113,7 +116,8 @@ LogosDialog {
         })
         request = ""
     }
-    contentItem: ColumnLayout {
+    ColumnLayout {
+        Layout.fillWidth: true; Layout.fillHeight: true
         spacing: Theme.spacing.small
         LogosText { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Manage a physical Keycard in a direct reader. Shell USB does not expose these operations; move its card to a reader." }
         RowLayout {
@@ -214,7 +218,7 @@ LogosDialog {
         LogosText { objectName: "adminResult"; text: admin.message; textFormat: Text.PlainText; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere; color: admin.failed ? Theme.palette.error : Theme.palette.textSecondary }
         LogosText { objectName: "adminBlocked"; visible: !!admin.blocked; text: admin.blocked; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.textSecondary }
         RowLayout {
-            LogosButton { text: "Done"; enabled: !admin.busy; onClicked: admin.close() }
+            Layout.fillWidth: true
             Item { Layout.fillWidth: true }
             LogosButton {
                 objectName: "adminSubmit"; text: admin.loadingGenerated ? "Load backed-up phrase" : admin.action === "generate_phrase" ? "Generate phrase" : admin.action === "factory_reset" ? "Reset card" : admin.action === "remove_key" ? "Erase keys" : "Continue"
