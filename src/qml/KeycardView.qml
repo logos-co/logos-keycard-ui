@@ -122,7 +122,11 @@ Item {
             width: scroll.availableWidth; spacing: Theme.spacing.medium
             RowLayout {
                 Layout.fillWidth: true
-                LogosText { text: "Keycard wallets"; font.pixelSize: 22 }
+                ColumnLayout {
+                    spacing: 0
+                    LogosText { text: "Keycard"; font.pixelSize: 22 }
+                    LogosText { text: "Wallets and card administration"; color: Theme.palette.textSecondary; font.pixelSize: Theme.typography.secondaryText }
+                }
                 LogosInfoButton { objectName: "keycardWalletInfo"; title: "One wallet per seed"; Accessible.name: "Help: One wallet per seed"; text: "Wallets are identified by a hash of the full master public key. Cards holding the same seed share one wallet, across readers and USB Shells. A different recovery passphrase creates a different wallet. Identify an older Shell wallet once and confirm its public-key requests to link its saved accounts. Previous wallet and account names are retained. A Shell connection means USB is present, not that this seed is inside. Any connected Shell can be used. The first use of each USB connection asks you to confirm the master public key. Subsequent signatures reuse that verification until the Shell disconnects or the app restarts. Use Verify wallet… on the wallet to request a fresh check at any time. Every returned signature is checked against the selected account. If the card has a different seed, the result is rejected; insert the correct card and retry. Names are saved on this computer." }
                 Item { Layout.fillWidth: true }
                 LogosButton { objectName: "cardAdministration"; text: "Card administration…"; enabled: root.ready && !root.working; onClicked: adminSheet.open() }
