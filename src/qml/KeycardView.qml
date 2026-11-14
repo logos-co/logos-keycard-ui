@@ -16,6 +16,8 @@ Item {
     // silent, timeout-less "Starting" into an honest, actionable state.
     property bool startupStalled: false
     readonly property url iconRefresh: Qt.resolvedUrl("assets/refresh.svg")
+    readonly property url iconEdit: Qt.resolvedUrl("assets/edit.svg")
+    readonly property url iconTrash: Qt.resolvedUrl("assets/trash.svg")
     Component.onCompleted: ready = backend !== null && logos.isViewModuleReady("keycard_ui")
     Timer { running: !root.ready && !root.startupStalled; interval: 15000; onTriggered: root.startupStalled = true }
     Connections {
@@ -100,7 +102,7 @@ Item {
         if (!g) return "Keycard"
         if (g.id.indexOf("seed:") === 0)
             return hasAccounts(g) ? (g.name || "Keycard wallet " + (fingerprintOf(g) || shortId(g.id)))
-                                  : "Keycard · unknown wallet"
+                                  : "Unknown wallet"
         return g.name || (g.legacy ? "Unidentified Keycard" : g.transport === "shell" ? "Keycard Shell · not identified yet" : "Keycard · not identified yet")
     }
     // A card's rows, as the kit takes them: an EVM address, or a Bitcoin first receiving address.
@@ -135,14 +137,37 @@ Item {
     }
     function aliasesOf(g) { return (g.aliases || []).filter(function(n) { return n !== g.name }) }
     function cardFor(c) { return root.cards.find(function(k) { return cardId(k) === c.id }) || null }
+    // The name stored on each connected card, read with a no-PIN status call and cached by adminId,
+    // so the transport line can show it (e.g. "Realify") without a tap. The pending guard keeps the
+    // read that triggers a refresh from looping: it fires once per card, then serves from cache.
+    property var cardNameCache: ({})
+    property var cardNamePending: ({})
+    onCardsChanged: root.cards.forEach(function(c) { if (c && c.adminId) root.ensureCardName(c) })
+    function ensureCardName(card) {
+        if (!card || !card.adminId || !ready) return
+        var k = card.adminId
+        if (cardNameCache.hasOwnProperty(k) || cardNamePending[k]) return
+        cardNamePending[k] = true
+        var p = {action: "status", reader: card.reader, cardId: card.adminId, keyUid: card.keyUid || ""}
+        logos.watch(backend.administer(JSON.stringify(p)), function(raw) {
+            delete cardNamePending[k]
+            var r; try { r = JSON.parse(raw) } catch(e) { r = {} }
+            var c = cardNameCache; c[k] = (r && r.ok && r.cardName) ? r.cardName : ""; cardNameCache = c
+        })
+    }
+    function cardNameFor(c) {
+        var card = cardFor(c)
+        return card && card.adminId && cardNameCache[card.adminId] ? cardNameCache[card.adminId] : ""
+    }
     // Each device in use, a card trusted without Keycard's certificate, and an older Shell wallet.
     function stripsOf(g) {
         var out = [], trusted = 0
         connectedDevices(g).forEach(function(c, i) {
             var card = c.transport === "shell" ? null : cardFor(c)
+            var nm = c.transport === "shell" ? "" : cardNameFor(c)
             var text = c.transport === "shell"
                 ? "Shell USB · " + shortId(c.serial) + (c.verification === "verified" ? " · USB connected; wallet verified" : c.verification === "different" ? " · USB connected; different wallet" : " · USB connected; verify on first use")
-                : "Card reader · card " + shortId(c.id) + " · Connected"
+                : "Card reader · " + (nm ? nm + " · " : "") + "card " + shortId(c.id)
             out.push({ id: "device" + i, text: text, card: card,
                        actions: card ? [{ id: "admin", label: "Card administration…", enabled: !root.working }] : [] })
             if (card && card.trustedByPerson === true)
@@ -216,7 +241,9 @@ Item {
                   leftMargin: Theme.spacing.medium; rightMargin: Theme.spacing.medium; bottomMargin: Theme.spacing.medium; topMargin: Theme.spacing.large }
         contentWidth: availableWidth
         ColumnLayout {
-            width: scroll.availableWidth; spacing: Theme.spacing.medium
+            width: Math.min(scroll.availableWidth, 560)
+            x: Math.max(0, (scroll.availableWidth - width) / 2)
+            spacing: Theme.spacing.medium
             ColumnLayout {
                 visible: root.ready && root.wallets.length === 0
                 Layout.fillWidth: true; Layout.topMargin: Theme.spacing.xxlarge; Layout.alignment: Qt.AlignHCenter; spacing: Theme.spacing.small
@@ -257,6 +284,9 @@ Item {
                     title: root.groupName(g)
                     walletId: root.fingerprintOf(g)
                     walletIdFull: (g.id || "").split(":").pop()
+                    editIcon: root.iconEdit
+                    trashIcon: root.iconTrash
+                    emptyText: root.hasAccounts(g) ? "No accounts yet." : ""
                     lines: root.aliasesOf(g).length ? ["Also named: " + root.aliasesOf(g).join(" · ")] : []
                     strips: root.stripsOf(g)
                     locked: g.locked === true

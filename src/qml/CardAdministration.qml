@@ -33,7 +33,21 @@ ColumnLayout {
             authenticity = r.ok ? (r.genuine ? "Verified by Keycard" : "Not certified by Keycard") : "Could not verify"
         })
     }
+    // The name stored on the card itself (set via "Update card name"). Read with a status call,
+    // which needs no PIN, so it can be shown in the header; "" when the card carries no name.
+    property string onCardName: ""
+    function readCardName() {
+        if (!selected) { onCardName = ""; return }
+        onCardName = "Checking…"
+        var p = {action:"status", reader:selected.reader, cardId:selected.adminId, keyUid:selected.keyUid || ""}
+        logos.watch(backend.administer(JSON.stringify(p)), function(raw) {
+            var r; try { r = JSON.parse(raw) } catch(e) { r = {} }
+            onCardName = (r && r.ok && r.cardName) ? r.cardName : ""
+        })
+    }
     readonly property var usableCards: cards.filter(function(c) { return !!c.adminId })
+    // A long hex id, shortened for display; the full value stays on the copy button.
+    function shortHex(s) { return s && s.length > 16 ? s.slice(0, 8) + "…" + s.slice(-8) : (s || "") }
     // The saved name for a card, resolved from cardGroups by the reader it sits in ("" if none).
     function cardName(c) {
         if (!c) return ""
@@ -92,7 +106,7 @@ ColumnLayout {
         // Credential + metadata: any usable card (has PIN, not locked).
         ops = ops.concat([{id:"change_pin",label:"Change PIN"},{id:"change_puk",label:"Change PUK"}])
         if (selected.secureChannel === 1) ops = ops.concat([{id:"change_pairing_password",label:"Change pairing password"},{id:"unpair",label:"Remove a pairing slot"}])
-        ops = ops.concat([{id:"set_name",label:"Name stored on card"},{id:"set_ndef",label:"NFC text message"},
+        ops = ops.concat([{id:"set_name",label:"Update card name"},{id:"set_ndef",label:"NFC text message"},
             {id:"read_data",label:"Read card data"},{id:"write_data",label:"Write card data"}])
         if (canReset) ops.push({id:"factory_reset",label:"Factory reset card"})
         return ops
@@ -135,7 +149,7 @@ ColumnLayout {
         return ""
     }
     function clearSecrets() { advanced.checked = false; customPairing.checked = false; pin.text = ""; newPin.text = ""; repeatPin.text = ""; puk.text = ""; repeatPuk.text = ""; pairing.text = ""; repeatPairing.text = ""; alternate.text = ""; repeatAlternate.text = ""; phrase.text = ""; passphrase.text = ""; generated = []; backedUp.checked = false; confirm.text = "" }
-    function selectCard(index) { clearSecrets(); selected = index >= 0 ? usableCards[index] : null; operation.currentIndex = -1; message = ""; if (typeof opDialog !== "undefined") opDialog.close(); checkAuthenticity() }
+    function selectCard(index) { clearSecrets(); selected = index >= 0 ? usableCards[index] : null; operation.currentIndex = -1; message = ""; if (typeof opDialog !== "undefined") opDialog.close(); checkAuthenticity(); readCardName() }
     // Card status and authenticity need no PIN; run them directly from the status section
     // without the action/confirm flow. Self-contained so it never touches a pending action.
     function runStatusOp(id) {
@@ -150,7 +164,7 @@ ColumnLayout {
             try { r = JSON.parse(raw) } catch(e) { r = {ok:false, error:"The card did not return a valid response. Refresh its status before retrying."} }
             failed = !r.ok || r.genuine === false
             message = r.ok ? (r.message || "Done.") : (r.error || "Operation failed.")
-            if (r.ok && id === "status") message += (r.cardName ? "\nName on card: " + r.cardName : "") + "\nPIN attempts left: " + r.pinRetries + " · PUK attempts left: " + r.pukRetries + "\nPrivate keys: " + (r.hasKey ? "present" : "not loaded") + (selected.secureChannel === 1 ? "\nFree pairing slots: " + r.freePairingSlots + " · This app's slot: " + r.pairingSlot : "")
+            if (r.ok && id === "status") message = "PIN attempts left: " + r.pinRetries + " · PUK attempts left: " + r.pukRetries + (selected.secureChannel === 1 ? "\nFree pairing slots: " + r.freePairingSlots + " · This app's slot: " + r.pairingSlot : "")
             r = null
         })
     }
@@ -198,7 +212,8 @@ ColumnLayout {
             failed = !r.ok || r.genuine === false; message = r.ok ? r.message || "Done." : r.error || "Operation failed."
             if (r.phrase) generated = r.phrase.split(" ")
             if (r.ok && op === "load_phrase") generated = []
-            if (r.ok && op === "status") message += (r.cardName ? "\nName on card: " + r.cardName : "") + "\nPIN attempts left: " + r.pinRetries + " · PUK attempts left: " + r.pukRetries + "\nPrivate keys: " + (r.hasKey ? "present" : "not loaded") + (selected.secureChannel === 1 ? "\nFree pairing slots: " + r.freePairingSlots + " · This app's slot: " + r.pairingSlot : "")
+            if (r.ok && op === "set_name") readCardName()
+            if (r.ok && op === "status") message = "PIN attempts left: " + r.pinRetries + " · PUK attempts left: " + r.pukRetries + (selected.secureChannel === 1 ? "\nFree pairing slots: " + r.freePairingSlots + " · This app's slot: " + r.pairingSlot : "")
             if (r.data !== undefined) data.text = r.data
             r = null
         })
@@ -242,16 +257,24 @@ ColumnLayout {
                 spacing: Theme.spacing.tiny
                 RowLayout {
                     Layout.fillWidth: true; spacing: Theme.spacing.small
-                    LogosText { Layout.fillWidth: true; Layout.alignment: Qt.AlignVCenter; wrapMode: Text.WrapAnywhere; textFormat: Text.PlainText; color: Theme.palette.text; text: "Card name:  " + (admin.selected ? (admin.cardName(admin.selected) || "No name") : "") }
+                    LogosText { Layout.fillWidth: true; Layout.alignment: Qt.AlignVCenter; wrapMode: Text.WrapAnywhere; textFormat: Text.PlainText; color: Theme.palette.text; text: "Card name:  " + (admin.selected ? (admin.onCardName || "empty") : "") }
                     LogosButton { objectName: "statusDetails"; text: "More details"; enabled: !admin.busy; onClicked: admin.runStatusOp("status") }
                 }
                 RowLayout {
                     Layout.fillWidth: true; spacing: Theme.spacing.tiny
-                    LogosText { wrapMode: Text.WrapAnywhere; textFormat: Text.PlainText; color: Theme.palette.textSecondary; text: admin.selected ? "Fingerprint:  " + admin.selected.adminId.split(":").pop() : "" }
-                    LogosCopyButton { visible: !!admin.selected; value: admin.selected ? admin.selected.adminId.split(":").pop() : ""; feedbackText: "Fingerprint copied"; size: 24; iconSize: 14 }
+                    LogosText { Layout.alignment: Qt.AlignVCenter; wrapMode: Text.WrapAnywhere; textFormat: Text.PlainText; color: Theme.palette.textSecondary; text: admin.selected ? "Card fingerprint:  " + admin.selected.adminId.split(":").pop() : "" }
+                    LogosCopyButton { Layout.alignment: Qt.AlignVCenter; visible: !!admin.selected; value: admin.selected ? admin.selected.adminId.split(":").pop() : ""; feedbackText: "Card fingerprint copied"; size: 18; iconSize: 12 }
+                    Item { Layout.fillWidth: true }
+                }
+                RowLayout {
+                    Layout.fillWidth: true; spacing: Theme.spacing.tiny
+                    visible: !!(admin.selected && admin.selected.keyUid)
+                    LogosText { Layout.alignment: Qt.AlignVCenter; wrapMode: Text.WrapAnywhere; textFormat: Text.PlainText; color: Theme.palette.textSecondary; text: admin.selected && admin.selected.keyUid ? "Key id:  " + admin.shortHex(admin.selected.keyUid) : "" }
+                    LogosCopyButton { Layout.alignment: Qt.AlignVCenter; visible: !!(admin.selected && admin.selected.keyUid); value: admin.selected && admin.selected.keyUid ? admin.selected.keyUid : ""; feedbackText: "Key id copied"; size: 18; iconSize: 12 }
                     Item { Layout.fillWidth: true }
                 }
                 LogosText { Layout.fillWidth: true; textFormat: Text.PlainText; color: Theme.palette.textSecondary; text: admin.selected ? "Version:  " + (admin.selected.initialized ? "Keycard " + admin.selected.version : "Not set up") : "" }
+                LogosText { Layout.fillWidth: true; textFormat: Text.PlainText; color: Theme.palette.textSecondary; text: admin.selected ? "Private keys:  " + (admin.selected.keyUid ? "present" : "not loaded") : "" }
                 LogosText { Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText; color: Theme.palette.textSecondary; text: "Authenticity:  " + (admin.authenticity || "—") }
             }
         }
