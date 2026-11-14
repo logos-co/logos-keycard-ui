@@ -101,3 +101,44 @@ sent upstream yet. Each item says what, why it matters, the evidence, and a prop
   / timeout) with an actionable message, e.g. "Can't access the Keycard Shell: this Linux user
   lacks permission for its USB device. Install the Keycard Shell udev rule (see docs) and
   re-plug the Shell." Keep the "turns itself off" copy only for an actual disconnect/timeout.
+
+## 7. Keycard Shell re-prompts the "Connect wallet" consent per exported key (device/firmware)
+
+- **What / owner:** Keycard Shell firmware (and/or `keycard_shell_module` host session handling),
+  not `keycard_ui`. Exporting several public keys in one batched request makes the Shell show its
+  "Connect wallet / asking to export public keys" consent screen **once per key**, each awaiting a
+  separate OK, instead of consenting once for the connection. Listing a page of accounts needed
+  ~4 OKs.
+- **Why it matters:** the consent wording ("export public **keys**", "a wallet you want to use
+  your Shell with") reads as a per-connection authorization, and the app's own model (its info
+  panel) says the master public key is confirmed once per USB connection and reused until the
+  Shell disconnects or the app restarts. The per-key re-prompt contradicts both, and makes the
+  first-run "add accounts" flow feel stuck.
+- **Evidence:** video (phone recording of the Shell showing the identical "Connect wallet" prompt
+  on consecutive confirmations); `KeycardView.qml` sends **one** batched `addAccounts` call with
+  all derivation paths (`show()` → `run("preview", { entries })`), so the loop is below the app.
+- **Our app-side mitigation (not the fix):** the preview page size is now 1 for Shell connections
+  (`addSheet.pageSize = root.shell ? 1 : 5`), so the common "add one account" flow is a single OK;
+  adding several still costs one consent per key. Filed upstream:
+  https://github.com/keycard-tech/keycard-shell/issues/237 (draft in
+  `docs/drafts/keycard-shell-issue-export-reconsent.md`; video attached by Alisher via the web UI).
+- **Maintainer verdict (bitgamma, Shell firmware author, on #237):** not a firmware bug. Per-export
+  confirmation is intentional. The fix is **host-side**: *"you should not export the keys
+  one-by-one, but rather only export the xpub of `m/44'/60'/0'` and derive the leaves host-side.
+  This way you only need to export a single public key and can derive as many addresses as you want
+  in milliseconds, without round trips."*
+- **Where the fix lands:** `keycard_shell_module` (Dario's), not `keycard_ui`. The per-leaf device
+  export is inside that module — `keycard_ui_backend.cpp` calls
+  `keycard_shell_module.add_accounts()` / `add_status()` with leaf entries; the UI only passes paths
+  and shows results, so it cannot collapse the round-trips. The module should export the
+  account-level extended public key (xpub + chain code at `m/44'/60'/0'`) once, then derive the
+  requested leaf public keys / addresses host-side (BIP32 non-hardened), as the UI backend already
+  does for Bitcoin display addresses (`keycard_ui_backend.cpp:171`). Same applies to `keycard_module`
+  for inserted cards. Measured cost today: ~2 taps first-use overhead per connection + 1 tap per
+  address (5 addresses = 5 taps; 1 address on a fresh connection = 3 taps). With the xpub approach:
+  **1 tap, any number of addresses.**
+- **Interim mitigation in `keycard_ui` (shipped):** preview page size of 1 for Shell
+  (`addSheet.pageSize = root.shell ? 1 : 5`), so the common add-one-account flow is the minimum the
+  module allows. Remove once the module exports the account xpub and derives leaves.
+- Filed for the module owner: https://github.com/logos-co/logos-keycard-shell-module/issues/9
+  (draft: `docs/drafts/keycard-shell-module-xpub-derive.md`).

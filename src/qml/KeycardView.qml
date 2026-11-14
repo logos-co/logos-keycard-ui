@@ -263,6 +263,11 @@ Item {
         readonly property string chain: network.currentIndex === 0 ? "main" : "test"
         readonly property bool canAsk: root.ready && root.connected && !root.needsPairing && !root.working && !submitting
                                        && (root.shell || pinField.text.length === 6)
+        // How many accounts to preview per page. On a Shell every exported public key needs its own
+        // on-device confirmation (the "Connect wallet" consent is re-prompted per key), so default to
+        // one account per page: one OK to see your main account, then Next for more. A card (PC/SC)
+        // exports without a per-key tap, so keep the fuller page there.
+        readonly property int pageSize: root.shell ? 1 : 5
         function rowKey(r) { return r.family + ":" + r.chain + ":" + r.index }
         function chosen(key) { return selected.some(function(r) { return r.key === key }) }
         function toggle(r, on) {
@@ -281,11 +286,11 @@ Item {
             if (label) e.label = label
             return e
         }
-        // Five accounts from `start`, read from the device and kept nowhere yet.
+        // A page of `pageSize` accounts from `start`, read from the device and kept nowhere yet.
         function show(start) {
             from = Math.max(0, start); firstIndex.text = String(from)
             var entries = []
-            for (var i = 0; i < 5; i++) entries.push(entry(family, chain, from + i, ""))
+            for (var i = 0; i < pageSize; i++) entries.push(entry(family, chain, from + i, ""))
             run("preview", { entries: entries, preview: true }, pinField.text)
         }
         // The picks, each its own name or none, kept from the previews without the device.
@@ -341,7 +346,7 @@ Item {
                         visible: addSheet.step === 0; Layout.fillWidth: true
                         LogosText {
                             Layout.fillWidth: true; wrapMode: Text.WordWrap
-                            text: root.shell ? "Unlock the wallet on your Shell. Each address shown is a public-key request to confirm on its screen."
+                            text: root.shell ? "Unlock the wallet on your Shell. Each account is a separate public-key request: the Shell asks you to confirm each one on its screen, so press OK on the Shell for every account. This page shows one at a time; use Next for more."
                                              : "Enter the card's PIN to show its accounts. Only public keys leave the card."
                         }
                         LogosComboBox {
@@ -410,9 +415,9 @@ Item {
                         }
                         RowLayout {
                             visible: addSheet.rows.length > 0; Layout.fillWidth: true
-                            LogosButton { objectName: "previousAccounts"; text: "Previous"; enabled: addSheet.canAsk && addSheet.from > 0; onClicked: addSheet.show(addSheet.from - 5) }
-                            LogosText { text: addSheet.from + "–" + (addSheet.from + 4) }
-                            LogosButton { objectName: "nextAccounts"; text: "Next"; enabled: addSheet.canAsk && addSheet.from < 2147483639; onClicked: addSheet.show(addSheet.from + 5) }
+                            LogosButton { objectName: "previousAccounts"; text: "Previous"; enabled: addSheet.canAsk && addSheet.from > 0; onClicked: addSheet.show(Math.max(0, addSheet.from - addSheet.pageSize)) }
+                            LogosText { text: addSheet.pageSize > 1 ? addSheet.from + "–" + (addSheet.from + addSheet.pageSize - 1) : "Index " + addSheet.from }
+                            LogosButton { objectName: "nextAccounts"; text: "Next"; enabled: addSheet.canAsk && addSheet.from < 2147483639; onClicked: addSheet.show(addSheet.from + addSheet.pageSize) }
                             Item { Layout.fillWidth: true }
                         }
                     }
@@ -441,7 +446,7 @@ Item {
                     }
                     LogosText {
                         visible: root.working; Layout.fillWidth: true; wrapMode: Text.WordWrap
-                        text: addSheet.asked === "keep" ? "Adding the accounts…" : root.shell ? "Confirm each public-key request on the Shell…" : "Reading the card's public accounts…"
+                        text: addSheet.asked === "keep" ? "Adding the accounts…" : root.shell ? "Press OK on the Shell to confirm the public-key request…" : "Reading the card's public accounts…"
                     }
                     LogosText { objectName: "addMessage"; visible: !!addSheet.notice; Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText; color: Theme.palette.error; text: addSheet.notice }
                     LogosText { visible: root.ready && !!root.backend.lastError; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.error; textFormat: Text.PlainText; text: root.ready ? root.backend.lastError : "" }
