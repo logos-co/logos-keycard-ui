@@ -209,9 +209,9 @@ ColumnLayout {
         Layout.fillWidth: true; Layout.fillHeight: true
         contentWidth: availableWidth
         ColumnLayout {
-        width: adminScroll.availableWidth
+        width: Math.min(adminScroll.availableWidth, 560)
+        x: Math.max(0, (adminScroll.availableWidth - width) / 2)
         spacing: Theme.spacing.small
-        LogosText { visible: admin.usableCards.length > 1; Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small; text: "Select card"; font.pixelSize: Theme.typography.subtitleText; font.weight: Theme.typography.weightBold; color: Theme.palette.text }
         RowLayout {
             visible: admin.usableCards.length > 1
             Layout.fillWidth: true
@@ -228,9 +228,9 @@ ColumnLayout {
                 LogosCopyButton { id: emptyGetReaderCopy; value: "https://keycard.tech/products/keycard-reader-for-desktop"; feedbackText: "URL copied"; size: 24; iconSize: 14 }
             }
         }
-        LogosText { visible: admin.usableCards.length > 0; Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small; text: "Details"; font.pixelSize: Theme.typography.subtitleText; font.weight: Theme.typography.weightBold; color: Theme.palette.text }
         Rectangle {
             visible: !!admin.selected && !admin.changed
+            Layout.topMargin: Theme.spacing.small
             Layout.fillWidth: true
             Layout.preferredHeight: detailsCol.implicitHeight + 2 * Theme.spacing.small
             radius: Theme.spacing.radiusLarge
@@ -255,27 +255,25 @@ ColumnLayout {
                 LogosText { Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText; color: Theme.palette.textSecondary; text: "Authenticity:  " + (admin.authenticity || "—") }
             }
         }
-        LogosText {
-            visible: !!admin.selected && !admin.changed && admin.choices.length > 0
-            Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small; text: "Actions"; font.pixelSize: Theme.typography.subtitleText; font.weight: Theme.typography.weightBold; color: Theme.palette.text
-        }
         Repeater {
             model: admin.actionGroups
             delegate: ColumnLayout {
                 id: groupItem
                 required property var modelData
-                Layout.fillWidth: true; spacing: Theme.spacing.tiny
+                Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small; spacing: Theme.spacing.small
                 visible: !!admin.selected && !admin.changed
                 LogosText {
-                    Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small
-                    text: groupItem.modelData.advanced ? ((admin.advancedOpen ? "▾  " : "▸  ") + groupItem.modelData.name) : groupItem.modelData.name
+                    visible: !!groupItem.modelData.advanced
+                    Layout.fillWidth: true
+                    text: (admin.advancedOpen ? "▾  " : "▸  ") + groupItem.modelData.name
                     font.pixelSize: Theme.typography.secondaryText
-                    color: groupItem.modelData.danger ? Theme.palette.error : Theme.palette.textSecondary
-                    TapHandler { enabled: !!groupItem.modelData.advanced; onTapped: admin.advancedOpen = !admin.advancedOpen }
+                    color: Theme.palette.textSecondary
+                    TapHandler { onTapped: admin.advancedOpen = !admin.advancedOpen }
                 }
                 Repeater {
                     model: groupItem.modelData.items
                     delegate: LogosButton {
+                        id: actBtn
                         required property var modelData
                         objectName: "adminAction_" + modelData.id
                         Layout.fillWidth: true
@@ -283,6 +281,10 @@ ColumnLayout {
                         enabled: !!admin.selected && !admin.busy && !admin.changed
                         text: (admin.action === modelData.id ? "●  " : "") + modelData.label
                         onClicked: operation.currentIndex = admin.choices.findIndex(function(o) { return o.id === modelData.id })
+                        Component.onCompleted: if (groupItem.modelData.danger) {
+                            actBtn.labelItem.color = Qt.binding(function() { return actBtn.enabled ? Theme.palette.error : Theme.palette.textMuted })
+                            actBtn.backgroundItem.border.color = Qt.binding(function() { return actBtn.enabled ? Theme.palette.error : Theme.palette.border })
+                        }
                     }
                 }
             }

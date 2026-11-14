@@ -182,12 +182,23 @@ Item {
         contentWidth: availableWidth
         ColumnLayout {
             width: scroll.availableWidth; spacing: Theme.spacing.medium
-            LogosText {
+            ColumnLayout {
                 visible: root.ready && root.cards.length === 0 && root.shellDevices.length === 0
-                Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.textSecondary
-                text: "Connect a Keycard reader or a Keycard Shell over USB. Your keys stay on the card."
+                Layout.fillWidth: true; Layout.topMargin: Theme.spacing.xxlarge; Layout.alignment: Qt.AlignHCenter; spacing: Theme.spacing.small
+                LogosText { Layout.alignment: Qt.AlignHCenter; horizontalAlignment: Text.AlignHCenter; font.pixelSize: Theme.typography.subtitleText; font.weight: Theme.typography.weightBold; color: Theme.palette.text; text: "No Keycard connected" }
+                LogosText { Layout.alignment: Qt.AlignHCenter; Layout.maximumWidth: 420; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; color: Theme.palette.textSecondary; text: "Connect a Keycard reader or a Keycard Shell over USB to add your first wallet. Your keys stay on the card." }
+                RowLayout {
+                    Layout.alignment: Qt.AlignHCenter; spacing: Theme.spacing.tiny
+                    LogosLink { text: "Get a Keycard"; href: "https://keycard.tech/"; onActivated: function(url) { getKeycardCopy.copy(); Qt.openUrlExternally(url) } }
+                    LogosCopyButton { id: getKeycardCopy; value: "https://keycard.tech/"; feedbackText: "URL copied"; size: 24; iconSize: 14 }
+                }
             }
-            LogosText { visible: root.ready && root.wallets.length === 0; text: "Connect a Keycard to add your first wallet." }
+            LogosText {
+                visible: root.ready && root.wallets.length === 0 && (root.cards.length > 0 || root.shellDevices.length > 0)
+                Layout.fillWidth: true; Layout.topMargin: Theme.spacing.xxlarge; Layout.alignment: Qt.AlignHCenter
+                horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; color: Theme.palette.textSecondary
+                text: "Connect a Keycard to add your first wallet."
+            }
             LogosButton { objectName: "reviewUnverified"; visible: root.unsigned.length > 0; text: "Review unverified Keycard…"; onClicked: trustSheet.open() }
             LogosText { objectName: "keycardNotice"; visible: text !== ""; Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText; text: root.ready ? root.backend.noticeText : "" }
             Repeater {
