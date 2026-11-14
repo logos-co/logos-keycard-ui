@@ -162,4 +162,5 @@ sent upstream yet. Each item says what, why it matters, the evidence, and a prop
   the Keycard app; `keep()` re-runs `enroll_seed` into the now-running manager and the wallet appears.
 - **Proposed fix:** re-enroll known seeds when the manager subscription (re)arms, or queue/retry
   `enroll_seed` on manager-appear, or do not lazy-load `signer_manager_module` while a Keycard is
-  present. Draft: `docs/drafts/keycard-module-signer-enroll-on-reconnect.md`. Not yet filed.
+  present. Draft: `docs/drafts/keycard-module-signer-enroll-on-reconnect.md`. Filed:
+  https://github.com/logos-co/logos-keycard-module/issues/10
