@@ -211,12 +211,11 @@ ColumnLayout {
         ColumnLayout {
         width: adminScroll.availableWidth
         spacing: Theme.spacing.small
-        LogosText { visible: admin.usableCards.length > 0; Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small; text: "Select card"; font.pixelSize: Theme.typography.subtitleText; font.weight: Theme.typography.weightBold; color: Theme.palette.text }
+        LogosText { visible: admin.usableCards.length > 1; Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small; text: "Select card"; font.pixelSize: Theme.typography.subtitleText; font.weight: Theme.typography.weightBold; color: Theme.palette.text }
         RowLayout {
-            visible: admin.usableCards.length > 0
+            visible: admin.usableCards.length > 1
             Layout.fillWidth: true
             LogosComboBox { id: picker; objectName: "adminCardPicker"; Layout.fillWidth: true; enabled: !admin.busy; model: admin.usableCards.map(function(c) { return (admin.cardName(c) || "No name") + " · " + c.adminId.split(":").pop().slice(0,8) + " · " + c.reader }); onActivated: admin.selectCard(currentIndex) }
-            LogosIconButton { objectName: "adminRefresh"; iconSource: Qt.resolvedUrl("assets/refresh.svg"); enabled: !admin.busy; onClicked: logos.watch(admin.backend.refresh(), function() { admin.selectCard(picker.currentIndex) }) }
         }
         ColumnLayout {
             visible: admin.usableCards.length === 0
