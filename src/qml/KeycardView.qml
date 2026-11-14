@@ -148,8 +148,15 @@ Item {
                 LogosText { text: "Wallets and card administration"; color: Theme.palette.textSecondary; font.pixelSize: Theme.typography.secondaryText }
             }
             Item { Layout.fillWidth: true }
-            LogosButton { objectName: "connectShell"; text: "Open wallet via USB…"; visible: root.shellDevices.length > 0; enabled: !root.working; onClicked: shellSheet.open() }
-            LogosBadge { objectName: "connectionStatus"; text: root.connLabel; color: root.connColor }
+            RowLayout {
+                spacing: Theme.spacing.tiny
+                // One chip per live transport, so a Shell and a reader connected at once read as two
+                // green states instead of one that hides the other. Falls back to a single status
+                // chip while starting, or when nothing is connected.
+                LogosBadge { objectName: "connectionStatus"; visible: !root.ready || (root.cards.length === 0 && root.shellDevices.length === 0); text: root.connLabel; color: root.connColor }
+                LogosBadge { objectName: "connectionStatusReader"; visible: root.ready && root.cards.length > 0; text: "Card via reader"; color: Theme.palette.success }
+                LogosBadge { objectName: "connectionStatusShell"; visible: root.ready && root.shellDevices.length > 0; text: "Shell via USB"; color: Theme.palette.success }
+            }
             LogosIconButton { objectName: "refreshButton"; iconSource: root.iconRefresh; enabled: root.ready && !root.working; onClicked: root.backend.refresh() }
         }
         LogosTabBar {
@@ -526,21 +533,6 @@ Item {
                     }
                 }
             }
-        }
-    }
-    LogosDialog {
-        id: shellSheet; title: "Open a wallet via USB"
-        anchors.centerIn: parent; width: Math.min(parent.width-40, 520)
-        contentItem: ColumnLayout {
-            LogosText { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Open the wallet on your Shell and choose the connected device." }
-            Repeater {
-                model: root.shellDevices
-                delegate: LogosButton { Layout.fillWidth: true; text: "Shell · " + root.shortId(modelData.serial); onClicked: {
-                    var wallet = {id: "shell:" + modelData.serial + ":", serial: modelData.serial, pending: true, transport: "shell", accounts: [], connected: true}
-                    shellSheet.close(); root.openAdd(wallet)
-                } }
-            }
-            LogosButton { text: "Cancel"; onClicked: shellSheet.close() }
         }
     }
     LogosDialog {
