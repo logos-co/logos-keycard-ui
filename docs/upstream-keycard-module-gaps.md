@@ -15,6 +15,8 @@ sent upstream yet. Each item says what, why it matters, the evidence, and a prop
   chip derivation.
 - **Proposed fix:** a `readers()` method, or include empty-reader entries in `cards()`
   (a reader with no `adminId`/`keyUid`), so the UI can tell empty-reader from no-reader.
+- **Filed:** https://github.com/logos-co/logos-keycard-module/issues/11 (with the `pukRetries`-on-
+  `cards()` convenience from gap #2 noted there).
 
 ## 2. `pukRetries` is not on the `cards()` list object (only in `status`)
 
@@ -101,6 +103,7 @@ sent upstream yet. Each item says what, why it matters, the evidence, and a prop
   / timeout) with an actionable message, e.g. "Can't access the Keycard Shell: this Linux user
   lacks permission for its USB device. Install the Keycard Shell udev rule (see docs) and
   re-plug the Shell." Keep the "turns itself off" copy only for an actual disconnect/timeout.
+- **Filed (with #5, as one Shell-on-Linux issue):** https://github.com/logos-co/logos-keycard-shell-module/issues/10
 
 ## 7. Keycard Shell re-prompts the "Connect wallet" consent per exported key (device/firmware)
 
