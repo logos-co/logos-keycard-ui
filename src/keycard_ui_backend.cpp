@@ -374,10 +374,10 @@ bool KeycardUiBackend::renameCard(QString id, QString name)
 
 bool KeycardUiBackend::forgetSavedCard(QString id)
 {
+    // Forgetting only drops the saved accounts and name from this computer; nothing on the card is
+    // touched. It works with the Keycard still in the reader: the wallet simply returns as an
+    // unknown wallet, ready to set up again.
     startAction(); refresh();
-    if (findGroup(cardGroupsJson(), id).value("connected").toBool()) {
-        setLastError("Remove this wallet's Keycards from their readers before forgetting it."); return false;
-    }
     bool result = true;
     if (containsGroup(cardGroupsJson(), id)) result &= ok(parseObject(modules().keycard_module.forget_saved_card(id)), "Forget wallet");
     if (result && containsGroup(shellGroupsJson(), id)) result &= ok(parseObject(modules().keycard_shell_module.forget_wallet(id)), "Forget wallet");

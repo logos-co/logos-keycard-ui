@@ -38,6 +38,11 @@ Item {
         const identifiedHere = d.verifiedMasterKeyId && j(backend.walletsJson, "[]").some(function(g) { return g.id === "seed:" + d.verifiedMasterKeyId })
         return !identifiedHere && !root.shellGroups.some(function(g) { return (g.connections || []).some(function(c) { return c.serial === d.serial }) })
     }).map(function(d) { return {id: "shell:" + d.serial + ":", serial: d.serial, transport: "shell", connected: true, pending: true, accounts: [], connections: [{transport: "shell", serial: d.serial, connected: true}]} }))
+    // A wallet is a keypair, identified by its master key ("seed:<keyUid>"). Everything else in the
+    // list is a connected device whose wallet is not known yet (a Shell before its one-tap identify,
+    // or a keyless card): shown apart so a device is never mistaken for a wallet.
+    readonly property var identifiedWallets: wallets.filter(function(g) { return g.id.indexOf("seed:") === 0 })
+    readonly property var unidentified: wallets.filter(function(g) { return g.id.indexOf("seed:") !== 0 })
     readonly property var accounts: ready ? j(backend.accountsJson, "[]") : []
     readonly property var unsigned: cards.filter(function(c) { return c.untrusted !== undefined })
     // Header connection state, from signals the view already has. The finer negative cases
@@ -61,7 +66,21 @@ Item {
     readonly property var wallet: wallets.find(function(g) { return g.id === selectedWalletId }) || pendingWallet
     property string selectedConnectionId: ""
     readonly property var connections: connectedDevices(wallet)
-    function connectedDevices(group) { return group ? (group.connections || [{transport: "shell", serial: group.serial, connected: group.connected}]).filter(function(c) { return c.connected }) : [] }
+    // Which devices to list under a group. Under an identified wallet (seed:...), a Shell shows only
+    // once it is verified to hold this wallet's seed; an unverified or different Shell is not this
+    // wallet's device, it lives in its own "Not identified yet" block. A reader card is identified on
+    // connect (its keyUid is in the plain SELECT), so it always shows. The unidentified Shell block
+    // itself is a non-seed group, so its own Shell line is kept.
+    function connectedDevices(group) {
+        if (!group) return []
+        var identified = (group.id || "").indexOf("seed:") === 0
+        var conns = group.connections || [{transport: "shell", serial: group.serial, connected: group.connected}]
+        return conns.filter(function(c) {
+            if (!c.connected) return false
+            if (identified && c.transport === "shell") return c.verification === "verified"
+            return c.verification !== "different"
+        })
+    }
     function route(c) { return !c ? "" : c.transport === "shell" ? "shell:" + c.serial + ":" : c.id }
     readonly property var connection: connections.find(function(c) { return root.route(c) === root.selectedConnectionId }) || connections[0] || null
     readonly property bool shell: !!connection && connection.transport === "shell"
@@ -79,8 +98,10 @@ Item {
     }
     function groupName(g) {
         if (!g) return "Keycard"
-        if (g.id.indexOf("seed:") === 0) return g.name || "Keycard wallet " + shortId(g.id)
-        return g.name || (g.legacy ? "Unidentified card" : g.transport === "shell" ? "Keycard via Shell" + (g.fingerprint ? " · " + g.fingerprint : "") : "Keycard " + shortId(g.id))
+        if (g.id.indexOf("seed:") === 0)
+            return hasAccounts(g) ? (g.name || "Keycard wallet " + (fingerprintOf(g) || shortId(g.id)))
+                                  : "Keycard · unknown wallet"
+        return g.name || (g.legacy ? "Unidentified Keycard" : g.transport === "shell" ? "Keycard Shell · not identified yet" : "Keycard · not identified yet")
     }
     // A card's rows, as the kit takes them: an EVM address, or a Bitcoin first receiving address.
     function rowsOf(g) {
@@ -98,12 +119,19 @@ Item {
         var a = ((g && g.accounts) || []).find(function(a) { return !!a.fingerprint })
         return a ? a.fingerprint : ""
     }
+    // A known wallet has at least one account saved: that is also when its master fingerprint is
+    // readable. A connected seed card with none is a Keycard whose wallet we do not know yet.
+    function hasAccounts(g) { return (((g && g.accounts) || []).length) > 0 }
     // All of these act on the whole wallet, so they sit together beside its name.
     function walletActions(g) {
-        return [{ id: "add", label: "Add accounts", enabled: g.connected && !root.working && !g.legacy && g.locked !== true }]
-            .concat(g.legacy || g.pending ? [] : [{ id: "rename", label: "Rename…" }]
-                .concat(g.id.indexOf("seed:") === 0 && root.shellDevices.length > 0 ? [{ id: "verify", label: "Verify wallet…", enabled: !root.working }] : [])
-                .concat([{ id: "forget", label: "Forget wallet…" }]))
+        var add = [{ id: "add", label: "Add accounts", enabled: g.connected && !root.working && !g.legacy && g.locked !== true }]
+        // An unknown wallet (connected card, no accounts yet) has nothing to rename or forget: only
+        // Add accounts (and Card administration, which rides on the connection strip).
+        var unknown = g.legacy || g.pending || (g.id.indexOf("seed:") === 0 && !hasAccounts(g))
+        return unknown ? add
+            : add.concat([{ id: "rename", label: "Rename…" }])
+                 .concat(g.id.indexOf("seed:") === 0 && root.shellDevices.length > 0 ? [{ id: "verify", label: "Verify wallet…", enabled: !root.working }] : [])
+                 .concat([{ id: "forget", label: "Forget wallet…" }])
     }
     function aliasesOf(g) { return (g.aliases || []).filter(function(n) { return n !== g.name }) }
     function cardFor(c) { return root.cards.find(function(k) { return cardId(k) === c.id }) || null }
@@ -202,9 +230,24 @@ Item {
             }
             LogosButton { objectName: "reviewUnverified"; visible: root.unsigned.length > 0; text: "Review unverified Keycard…"; onClicked: trustSheet.open() }
             LogosText { objectName: "keycardNotice"; visible: text !== ""; Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText; text: root.ready ? root.backend.noticeText : "" }
-            Repeater {
-                objectName: "cardGroupRepeater"; model: root.wallets
-                delegate: Accounts.WalletCard {
+            // Wallets: a keypair, identified by its master key. Same key on any card/Shell = one block.
+            Repeater { objectName: "cardGroupRepeater"; model: root.identifiedWallets; delegate: walletDelegate }
+            // Devices connected but whose wallet is not known yet: kept apart so a device is not read
+            // as a wallet. Identify a Shell (one tap) to fold it into its wallet.
+            LogosText {
+                visible: root.ready && root.unidentified.length > 0
+                Layout.fillWidth: true; Layout.topMargin: Theme.spacing.medium
+                text: "Not identified yet"; font.pixelSize: Theme.typography.subtitleText; font.weight: Theme.typography.weightBold; color: Theme.palette.text
+            }
+            LogosText {
+                visible: root.ready && root.unidentified.length > 0
+                Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.textSecondary
+                text: "A connected Keycard or Shell whose wallet is not known yet. Identify it to link it to its wallet; a card with no keys loaded has no wallet to show."
+            }
+            Repeater { objectName: "unidentifiedRepeater"; model: root.unidentified; delegate: walletDelegate }
+            Component {
+                id: walletDelegate
+                Accounts.WalletCard {
                     id: group
                     required property var modelData
                     required property int index
@@ -212,7 +255,8 @@ Item {
                     Layout.fillWidth: true
                     namePrefix: "wallet" + index + "_"
                     title: root.groupName(g)
-                    fingerprint: root.fingerprintOf(g)
+                    walletId: root.fingerprintOf(g)
+                    walletIdFull: (g.id || "").split(":").pop()
                     lines: root.aliasesOf(g).length ? ["Also named: " + root.aliasesOf(g).join(" · ")] : []
                     strips: root.stripsOf(g)
                     locked: g.locked === true
@@ -667,12 +711,11 @@ Item {
     LogosDialog {
         id: forgetSheet
         objectName: "forgetSavedCardDialog"
-        title: "Forget Keycard?"
+        title: "Forget wallet?"
         property string cardId: ""
         property string cardName: ""
         property bool working: false
         readonly property var group: root.wallets.find(function(g) { return g.id === forgetSheet.cardId })
-        readonly property bool connected: !!group && (group.connections || []).some(function(c) { return c.transport !== "shell" && c.connected })
         anchors.centerIn: parent
         width: Math.min(parent.width - 40, 580)
         onOpened: working = false
@@ -688,13 +731,7 @@ Item {
             LogosText {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
-                text: "Remove this wallet's saved accounts and name from this computer. Nothing on the Keycard or Shell is erased. You can add its accounts again later."
-            }
-            LogosText {
-                Layout.fillWidth: true
-                wrapMode: Text.WordWrap
-                visible: forgetSheet.connected
-                text: "Remove this Keycard from its reader before forgetting it."
+                text: "Remove this wallet's saved accounts and name from this computer. Nothing on the Keycard or Shell is erased. While its Keycard stays connected it returns as an unknown wallet, ready to set up again."
             }
             LogosText {
                 Layout.fillWidth: true
@@ -713,8 +750,8 @@ Item {
                 Item { Layout.fillWidth: true }
                 LogosButton {
                     objectName: "confirmForgetSavedCard"
-                    text: forgetSheet.working ? "Forgetting…" : "Forget Keycard"
-                    enabled: !!forgetSheet.group && !forgetSheet.connected && !forgetSheet.working
+                    text: forgetSheet.working ? "Forgetting…" : "Forget wallet"
+                    enabled: !!forgetSheet.group && !forgetSheet.working
                     onClicked: {
                         forgetSheet.working = true
                         logos.watch(root.backend.forgetSavedCard(forgetSheet.cardId), function(ok) {

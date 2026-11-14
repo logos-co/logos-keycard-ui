@@ -12,7 +12,11 @@ Frame {
     id: card
     property string namePrefix: ""
     property string title: ""
-    property string fingerprint: ""
+    // The wallet's id, shown once it is a known wallet: its BIP32 master fingerprint. Empty until
+    // accounts are added, so the Wallet ID row only appears for a known wallet.
+    property string walletId: ""
+    // The keyUid this wallet is recognized by, shown in the Wallet ID tooltip.
+    property string walletIdFull: ""
     // Beside the actions at the top, as "Unlocked".
     property string stateText: ""
     // Who holds it, or how it unlocks.
@@ -82,24 +86,32 @@ Frame {
                     elide: Text.ElideRight
                 }
                 RowLayout {
-                    visible: card.fingerprint.length > 0 && !card.locked
-                    spacing: 8
+                    visible: card.walletId.length > 0 && !card.locked
+                    spacing: 6
                     LogosText {
+                        Layout.alignment: Qt.AlignBaseline
                         text: "Wallet ID"
                         color: Theme.palette.textSecondary
                         font.pixelSize: Theme.typography.secondaryText
                     }
                     LogosText {
                         objectName: card.namePrefix + "WalletId"
-                        text: card.fingerprint
+                        Layout.alignment: Qt.AlignBaseline
+                        text: card.walletId
                         textFormat: Text.PlainText
+                        color: Theme.palette.textSecondary
                         font.family: Theme.typography.mono
                         font.pixelSize: Theme.typography.secondaryText
                     }
-                    LogosText {
-                        text: "master fingerprint"
-                        color: Theme.palette.textTertiary
-                        font.pixelSize: Theme.typography.secondaryText
+                    // The full identity and the cross-check fingerprint, kept off the always-on
+                    // line: the keyUid is the wallet's identity; the BIP32 master fingerprint is
+                    // the short form the Signer/Keys and hardware wallets show, once accounts load.
+                    HoverHandler { id: walletIdHover }
+                    ToolTip {
+                        text: "The master fingerprint of the wallet's keys, the same ID the Signer and Keys apps show."
+                            + (card.walletIdFull.length > 0 ? "\nkeyUid: " + card.walletIdFull : "")
+                        visible: walletIdHover.hovered
+                        delay: 400
                     }
                 }
                 Repeater {
