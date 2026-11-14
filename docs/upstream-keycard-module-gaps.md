@@ -62,3 +62,42 @@ sent upstream yet. Each item says what, why it matters, the evidence, and a prop
 - **Proposed fix:** either have the host accept the `-dev` variant suffix for a local dev
   install, or have `.#install` tag the host's platform name, or document that only the
   `.lgx` build is host-loadable.
+
+## 5. No Keycard Shell udev rule ships, so the Shell is root-only on Linux (every user hits this)
+
+- **What / owner:** packaging/docs (Keycard Shell support in `keycard_shell_module` + the
+  Basecamp installer), not `keycard_ui`. On Linux the Keycard Shell (USB HID, VID:PID
+  `1209:21f7`, "Status Research & Development / Keycard Shell") enumerates as a `/dev/hidraw*`
+  node owned `crw------- root root`. A normal desktop user cannot open it, so "Add accounts via
+  Shell" → "Show accounts" fails every time with `hidapi error: failed to open device with path
+  /dev/hidrawN: Permission denied (os error 13)`. Nothing ships a udev rule to grant access.
+- **Why it matters:** this is not an edge case; it is the default state of a freshly plugged
+  Shell on any Linux box. The Shell is connected, unlocked, latest firmware, and the feature is
+  simply unreachable until the user knows to write a udev rule by hand. Hardware wallets
+  (Trezor, Ledger) all ship such a rule precisely because of this.
+- **Evidence (live):** `/dev/hidraw14` = `crw------- root root`; `lsusb` → `1209:21f7 Generic
+  Keycard Shell`; `udevadm` attrs `idVendor==1209 idProduct==21f7`, product "Keycard Shell".
+  Fixed locally with `/etc/udev/rules.d/51-keycard-shell.rules`:
+  `KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1209", ATTRS{idProduct}=="21f7",
+  MODE="0660", GROUP="plugdev", TAG+="uaccess"` (+ the matching `SUBSYSTEM=="usb"` line), then
+  reload + re-plug.
+- **Proposed fix:** ship `51-keycard-shell.rules` with the Linux package (or the AppImage's
+  first-run / docs), and detect EACCES at runtime to point the user at it (see #6).
+
+## 6. EACCES on the Shell HID node is misreported as "disconnected / turns itself off" (misdiagnosis)
+
+- **What / owner:** `keycard_shell_module` error mapping (the message is backend text the UI
+  only displays; it is not in `keycard_ui`). When opening the Shell's HID node returns
+  `Permission denied (os error 13)`, the surfaced message is: "the Keycard Shell disconnected;
+  it turns itself off after a few minutes without a press: turn it on, unlock it and try again
+  (hidapi error: failed to open device ... Permission denied (os error 13))".
+- **Why it matters:** the message sends the user down the wrong path entirely, power-cycling and
+  re-unlocking a Shell that is connected, on, and unlocked, when the actual fix is a one-time
+  host permission change (#5). The real cause (`os error 13`) is even quoted in the same string,
+  then contradicted by the prose.
+- **Evidence (live):** the screenshot message above, with a confirmed-connected Shell
+  (`/dev/hidraw14` present, `lsusb` shows it) whose only problem was the root-only permission.
+- **Proposed fix:** special-case EACCES / `os error 13` (distinct from a genuine open-after-gone
+  / timeout) with an actionable message, e.g. "Can't access the Keycard Shell: this Linux user
+  lacks permission for its USB device. Install the Keycard Shell udev rule (see docs) and
+  re-plug the Shell." Keep the "turns itself off" copy only for an actual disconnect/timeout.
