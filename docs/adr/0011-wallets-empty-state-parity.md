@@ -19,15 +19,23 @@ Keycard at all.
 
 Give the Wallets tab the same empty-state treatment as Administration.
 
-1. When no card and no Keycard Shell is connected, show a centered column: a bold title
-   ("No Keycard connected"), one line of guidance ("Connect a Keycard reader or a Keycard Shell
-   over USB to add your first wallet. Your keys stay on the card."), and an acquisition row.
-2. The acquisition row carries a **"Get a Keycard"** link to `https://keycard.tech/` with a copy
+1. Show the centered empty state when **there are no saved Keycard wallets**
+   (`root.wallets.length === 0`), not when no device is connected. The Wallets tab lists saved
+   wallet groups, which persist across sessions and across unplugging the card: a saved wallet with
+   its card currently absent must still render as a (device-disconnected) wallet card, not be
+   hidden behind the empty copy. Gating on "no device" wrongly showed the empty state over an
+   existing saved wallet; gating on "no wallets" is the correct condition.
+2. The empty state is a centered column: a bold title (**"No Keycard wallets added"** — the
+   accurate description of the state, since a Keycard may be connected and simply hold no added
+   wallet), one line of guidance ("Connect a Keycard reader or a Keycard Shell over USB to add your
+   first wallet. Your keys stay on the card."), and an acquisition row.
+3. The acquisition row carries a **"Get a Keycard"** link to `https://keycard.tech/` with a copy
    button, mirroring ADR-G's "Get a reader" affordance (link opens the browser and also copies the
    URL, since the plugin sandbox may refuse `Qt.openUrlExternally`; the copy is the reliable
    fallback). Administration links the reader product page because that is its missing piece; the
    Wallets landing links the Keycard site itself, the first thing a new person needs.
-3. The card-present-but-no-wallets case keeps its short message, now centered for consistency.
+4. The separate card-present-but-no-wallets line is removed: the single "no wallets" empty state
+   now covers that case too.
 
 ## Consequences
 
@@ -49,3 +57,6 @@ Costs:
 2. Link the reader page here too (same URL as Administration). Rejected: a person with no Keycard
    at all needs the Keycard site first; the reader page is the right target on the Administration
    tab, where the card exists but a direct reader may not.
+3. Gate the empty state on "no device connected". Rejected: saved wallets persist with the card
+   unplugged, so this hid real wallet cards behind the empty copy; the correct gate is "no saved
+   wallets".
