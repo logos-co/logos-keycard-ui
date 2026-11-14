@@ -142,3 +142,24 @@ sent upstream yet. Each item says what, why it matters, the evidence, and a prop
   module allows. Remove once the module exports the account xpub and derives leaves.
 - Filed for the module owner: https://github.com/logos-co/logos-keycard-shell-module/issues/9
   (draft: `docs/drafts/keycard-shell-module-xpub-derive.md`).
+
+## 8. Keycard seed never re-enrolls with signer_manager when the (lazy-loaded) manager appears
+
+- **What / owner:** `keycard_module` (rev `e36717ff`), the `signer_manager_module` enrollment path. A
+  Keycard wallet can end up permanently absent from `signer_manager_module`, so `eth_wallet` /
+  `tx_sender` refuse to sign for its accounts ("this account's wallet isn't known yet").
+- **Why it matters:** this is the end-to-end "send from a Keycard account" flow, and it fails silently
+  from a clean launch when the card is present before the Signer/Keystore app is opened.
+- **Mechanism (verified in source):** enrollment is `enroll_seed`, fired from `Events::seed_added` as a
+  fire-and-forget call that ignores its result (`rust-lib/src/glue.rs:107`). `seed_added` fires only
+  from `Shared::keep()` (Add accounts), which captures the unlock key then
+  (`rust-lib/src/signer.rs:484`, `:498`). `signer_manager_module` is lazy-loaded (only when
+  `evm_signer_ui` / `evm_keystore_ui` opens; our run: loaded at T+281 s). A seed enrolled while the
+  manager is not running is dropped, and the reconnect path (`watch_wallets` -> `open_wallets` /
+  `sync_names`, `glue.rs:132+`) only opens and names seeds the manager already knows; it never
+  re-`enroll`s. `seed_added` does not re-fire on restart or re-seat.
+- **Workaround (verified):** with the manager loaded (Keystore/Signer app open), Add accounts again in
+  the Keycard app; `keep()` re-runs `enroll_seed` into the now-running manager and the wallet appears.
+- **Proposed fix:** re-enroll known seeds when the manager subscription (re)arms, or queue/retry
+  `enroll_seed` on manager-appear, or do not lazy-load `signer_manager_module` while a Keycard is
+  present. Draft: `docs/drafts/keycard-module-signer-enroll-on-reconnect.md`. Not yet filed.
