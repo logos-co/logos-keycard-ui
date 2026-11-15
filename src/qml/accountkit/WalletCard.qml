@@ -71,9 +71,7 @@ Frame {
         objectName: prefix + "Action_" + Roster.actionName(spec)
         text: spec.label
         enabled: spec.enabled
-        ToolTip.text: spec.tip
-        ToolTip.visible: hovered && spec.tip.length > 0
-        ToolTip.delay: 400
+        LogosToolTip { text: spec.tip; visible: hovered && spec.tip.length > 0; delay: 400 }
     }
 
     contentItem: ColumnLayout {
@@ -107,7 +105,7 @@ Frame {
                         iconSource: card.editIcon
                         iconColor: hovered ? Theme.palette.text : Theme.palette.textTertiary
                         onClicked: if (card.editAction) card.action(card.editAction.id)
-                        ToolTip.text: "Edit name"; ToolTip.visible: hovered; ToolTip.delay: 400
+                        LogosToolTip { text: "Edit name"; visible: parent.hovered; delay: 400 }
                     }
                     Item { Layout.fillWidth: true }
                 }
@@ -180,7 +178,7 @@ Frame {
                 iconSource: card.trashIcon
                 iconColor: hovered ? Theme.palette.text : Theme.palette.textTertiary
                 onClicked: if (card.trashAction) card.action(card.trashAction.id)
-                ToolTip.text: "Forget wallet"; ToolTip.visible: hovered; ToolTip.delay: 400
+                LogosToolTip { text: "Forget wallet"; visible: parent.hovered; delay: 400 }
             }
         }
 
@@ -195,7 +193,12 @@ Frame {
                 readonly property string prefix: card.namePrefix + "Strip_" + key + "_"
                 objectName: card.namePrefix + "Strip_" + key
                 Layout.fillWidth: true
-                implicitHeight: stripRow.implicitHeight + 2 * Theme.spacing.small
+                // Single-line device strips share one fixed height so a strip with an action button
+                // (e.g. "Card administration") is no taller than one without (a LogosButton forces a
+                // 44 px min, which otherwise inflated only the button rows). A wrapping strip (a
+                // multi-line warning) keeps its natural height.
+                readonly property bool wrapping: !!(modelData && modelData.warn)
+                implicitHeight: wrapping ? (stripRow.implicitHeight + 2 * Theme.spacing.small) : 40
                 radius: 6
                 color: Theme.palette.backgroundSecondary
                 RowLayout {
@@ -238,7 +241,15 @@ Frame {
                             required property var modelData
                             spec: modelData
                             prefix: strip.prefix
-                            Component.onCompleted: if ("compact" in this) this["compact"] = true
+                            // Sized to sit inside the fixed strip height, centred, so it does not
+                            // make the row taller than a button-less strip. The default vertical
+                            // padding (Theme medium) is cut to match, or the label drops to the
+                            // bottom of the shortened button.
+                            Layout.alignment: Qt.AlignVCenter
+                            Layout.preferredHeight: 30
+                            Layout.maximumHeight: 30
+                            topPadding: Theme.spacing.tiny
+                            bottomPadding: Theme.spacing.tiny
                             onClicked: card.stripAction(strip.index, spec.id)
                         }
                     }
@@ -272,6 +283,8 @@ Frame {
                 delegate: ActionButton {
                     required property var modelData
                     spec: modelData
+                    // Unlock is the one thing to do on a locked wallet: give it primary weight.
+                    variant: LogosButton.Variant.Primary
                     onClicked: card.action(spec.id)
                 }
             }
