@@ -145,6 +145,13 @@ sent upstream yet. Each item says what, why it matters, the evidence, and a prop
   module allows. Remove once the module exports the account xpub and derives leaves.
 - Filed for the module owner: https://github.com/logos-co/logos-keycard-shell-module/issues/9
   (draft: `docs/drafts/keycard-shell-module-xpub-derive.md`).
+- **Second caller — Shell wallet identify (found 2026-11-15):** the same per-leaf export is in the
+  identify path too. `identifyWallet` → `add_accounts({identify:true})` → `export()` re-exports every
+  saved account's pubkey from the device to prove it shares the confirmed root (`signer.rs:703-726`
+  legacy loop + `:727-773`, each a `GET_PUBLIC` = one approval). Identify costs 1 (master key) + 1 per
+  saved account; a 10-account wallet is an 11-approval identify, and identify is now required on every
+  Shell reconnect. Same xpub fix collapses it to one approval. Extends #9; UI interim = the identify
+  notification holds one "Approve on Shell…" state and warns of multiple approvals upfront.
 
 ## 8. Keycard seed never re-enrolls with signer_manager when the (lazy-loaded) manager appears
 
