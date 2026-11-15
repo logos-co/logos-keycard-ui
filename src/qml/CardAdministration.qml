@@ -188,7 +188,8 @@ ColumnLayout {
     // uses the single-form opDialog until those flows are converted too.
     readonly property var guidedActions: ["change_pin", "change_puk", "unblock_pin",
         "set_name", "set_ndef", "pair", "change_pairing_password", "unpair",
-        "generate_key", "remove_key", "factory_reset"]
+        "generate_key", "remove_key", "factory_reset",
+        "initialize", "read_data", "write_data"]
     onActionChanged: {
         clearSecrets(); data.text = ""; message = ""
         if (action === "") return
