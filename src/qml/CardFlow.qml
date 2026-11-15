@@ -46,7 +46,7 @@ LogosDialog {
             steps:[ pin("Enter your PIN", "The 6-digit PIN for this card."),
                     {key:"ndef", kind:"text", title:"Public NFC text", desc:"Readable over NFC without a PIN. Do not put secrets here. Leave empty to clear it.", placeholder:"NFC text", maxLen:120, minLen:0} ] }
         if (action === "pair") return { title:"Pair this app", secret:"pairing", retry:"", success:"This app is paired with the card.",
-            steps:[ {key:"pairing", kind:"text", secret:true, title:"Pairing password", desc:"The app tries the standard password first. If pairing is still required, enter the password set when the card was set up.", placeholder:"Pairing password", minLen:1} ] }
+            steps:[ {key:"pairing", kind:"text", secret:true, title:"Pairing password", desc:"The app tries the standard password first. If pairing is still required, enter the password set when the card was set up.", placeholder:"Pairing password", minLen:1, defaultValue:"KeycardDefaultPairing", defaultLabel:"Use the default Keycard pairing password"} ] }
         if (action === "change_pairing_password") return { title:"Change pairing password", secret:"pin", retry:"pinRetries", success:"The pairing password has been changed.",
             steps:[ pin("Enter your PIN", "The 6-digit PIN for this card."),
                     {key:"pairing", kind:"text", secret:true, title:"New pairing password", desc:"Used for future pairings. Existing pairings keep working until their slots are removed.", placeholder:"New pairing password", minLen:1},
@@ -73,7 +73,7 @@ LogosDialog {
                               {key:"repeatPin", kind:"pin", title:"Confirm the PIN", desc:"Enter the PIN again.", match:"newPin"},
                               {key:"puk", kind:"puk", title:"Choose a PUK", desc:"Twelve digits. Keep it somewhere safe, separate from the card."},
                               {key:"repeatPuk", kind:"puk", title:"Confirm the PUK", desc:"Enter the PUK again.", match:"puk"} ]
-            if (sc === 1) initSteps.push({key:"pairing", kind:"text", secret:true, title:"Pairing password", desc:"A password apps use to pair with this card (1 to 128 characters).", placeholder:"Pairing password", minLen:1})
+            if (sc === 1) initSteps.push({key:"pairing", kind:"text", secret:true, title:"Pairing password", desc:"A password apps use to pair with this card (1 to 128 characters).", placeholder:"Pairing password", minLen:1, defaultValue:"KeycardDefaultPairing", defaultLabel:"Use the default Keycard pairing password"})
             return { title:"Set up card", secret:"", retry:"", success:"The card is set up. Pair it if needed, then create or import its recovery keys.", steps:initSteps }
         }
         if (action === "read_data") return { title:"Read card data", secret:"", retry:"", success:"Card data read.", result:true,
@@ -101,21 +101,34 @@ LogosDialog {
     readonly property var steps: plan.steps
     property int idx: 0
     property var vals: ({})
-    property string phase: "input"   // input | working | success | error
+    property string phase: "input"   // input | working | success | error | reveal | confirm
+    property string workingText: "Writing to the card…"
     property string errorMsg: ""
     property string noteMsg: ""
     property int attempts: -1
     property bool pinBlocked: false
     property bool pukBlocked: false
+    // Create flow: the generated phrase to show + load, whether it has been revealed, and the word
+    // positions the person must re-enter to confirm they wrote it down (Status-style backup check).
+    property string seedWords: ""
+    property bool revealed: false
+    readonly property var seedList: flow.seedWords ? flow.seedWords.split(" ") : []
+    property var confirmPos: []
+    readonly property bool confirmValid: flow.confirmPos.length === 3
+        && cw0.text.trim().toLowerCase() === (flow.seedList[flow.confirmPos[0]] || "")
+        && cw1.text.trim().toLowerCase() === (flow.seedList[flow.confirmPos[1]] || "")
+        && cw2.text.trim().toLowerCase() === (flow.seedList[flow.confirmPos[2]] || "")
     readonly property var step: steps[idx] || null
     readonly property bool isPin: step && (step.kind === "pin" || step.kind === "puk")
     readonly property bool isText: step && (step.kind === "text" || step.kind === "confirm")
     readonly property bool isChoice: step && step.kind === "choice"
     readonly property bool isPhrase: step && step.kind === "phrase"
     readonly property bool isCheck: step && step.kind === "check"
-    // A flow with a recovery-phrase grid needs a taller modal (12-24 fields).
-    readonly property bool tall: steps.some(function (s) { return s.kind === "phrase" })
+    // A flow with a recovery-phrase grid needs a taller modal (12-24 fields); the Create flow shows
+    // the generated phrase in a grid on its reveal screen, so it is tall too.
+    readonly property bool tall: action === "generate_phrase" || steps.some(function (s) { return s.kind === "phrase" })
     readonly property int count: step && step.kind === "puk" ? 12 : 6
+    readonly property int choiceIndex: (step && flow.vals[step.key] !== undefined) ? flow.vals[step.key] : 0
     readonly property bool lastStep: idx === steps.length - 1
     property string resultText: "" // data returned by a read operation, shown on the success screen
     readonly property bool stepValid: {
@@ -137,13 +150,21 @@ LogosDialog {
     width: Math.min((parent ? parent.width : 600) - 40, 460)
     // Fixed height so the modal is the same size through input, working, success and failure, and a
     // tip or an error never resizes it. A phrase flow (recovery-phrase grid) uses a taller box.
-    height: flow.tall ? 560 : 404
+    height: flow.tall ? 500 : 380
     closePolicy: phase === "working" ? Popup.NoAutoClose : Popup.CloseOnEscape
     onClosed: { clearSecrets(); flow.finished(flow.phase === "success") }
     onOpened: enterStep(false)
 
     function shortId(id) { var s = (id || "").split(":").pop(); return s.length > 16 ? s.slice(0,8) + "…" + s.slice(-8) : s }
-    function clearSecrets() { flow.vals = ({}); pinDots.clear(); txt.text = ""; phraseGrid.clear() }
+    function clearSecrets() { flow.vals = ({}); pinDots.clear(); txt.text = ""; phraseGrid.clear(); flow.seedWords = ""; flow.confirmPos = [] }
+    function startConfirm() {
+        var n = flow.seedList.length, picks = []
+        while (picks.length < 3 && picks.length < n) { var r = Math.floor(Math.random() * n); if (picks.indexOf(r) < 0) picks.push(r) }
+        picks.sort(function (a, b) { return a - b })
+        flow.confirmPos = picks
+        cw0.text = ""; cw1.text = ""; cw2.text = ""
+        flow.phase = "confirm"
+    }
     function isWeak(s) {
         if (s.length < 6) return false
         var weak = ["000000","111111","222222","333333","444444","555555","666666","777777","888888","999999","123456","654321","012345","121212","123123"]
@@ -155,21 +176,23 @@ LogosDialog {
         else if (flow.isText) {
             txt.textInput.maximumLength = (flow.step && flow.step.maxLen) ? flow.step.maxLen : 128
             txt.text = flow.step ? (flow.vals[flow.step.key] || "") : ""
+            defChk.checked = flow.step && flow.step.defaultValue !== undefined && txt.text === flow.step.defaultValue
             txt.textInput.forceActiveFocus()
         }
-        else if (flow.isChoice) { combo.currentIndex = (flow.step && flow.vals[flow.step.key] !== undefined) ? flow.vals[flow.step.key] : 0 }
+        else if (flow.isChoice) { if (flow.step && flow.vals[flow.step.key] === undefined) { var d = flow.vals; d[flow.step.key] = 0; flow.vals = d } }
         else if (flow.isPhrase) { phraseGrid.text = flow.step ? (flow.vals[flow.step.key] || "") : "" }
         else if (flow.isCheck) { checkBox.checked = flow.step ? (flow.vals[flow.step.key] === true) : false }
     }
     function begin() {
         flow.idx = 0; flow.vals = ({}); flow.phase = "input"; flow.errorMsg = ""; flow.noteMsg = ""
         flow.attempts = -1; flow.pinBlocked = false; flow.pukBlocked = false; flow.resultText = ""
+        flow.seedWords = ""; flow.revealed = false; flow.confirmPos = []
         enterStep(false)
     }
     function currentValue() {
         if (!flow.step) return ""
         if (flow.step.kind === "info") return "ack"
-        if (flow.isChoice) return combo.currentIndex
+        if (flow.isChoice) return flow.choiceIndex
         if (flow.isPhrase) return phraseGrid.text
         if (flow.isCheck) return checkBox.checked
         return flow.isPin ? pinDots.value : txt.text
@@ -220,6 +243,11 @@ LogosDialog {
         else if (flow.action === "write_data") { p.pin = flow.vals.pin; p.dataType = flow.vals.dataType === 0 ? 0 : 2; p.text = flow.vals.hex; p.confirmation = flow.vals.confirm }
         else if (flow.action === "verify_phrase") { p.pin = flow.vals.pin; p.phrase = flow.vals.phrase; p.passphrase = flow.vals.passphrase || "" }
         else if (flow.action === "load_phrase") { p.pin = flow.vals.pin; p.phrase = flow.vals.phrase; p.passphrase = flow.vals.passphrase || ""; p.confirmation = "BACKED UP" }
+        else if (flow.action === "generate_phrase") { p.pin = flow.vals.pin; p.words = [12,15,18,21,24][flow.vals.wordCount || 0] }
+        flow.workingText = flow.action === "generate_phrase" ? "Generating your recovery phrase…"
+                         : flow.action === "read_data" ? "Reading the card…"
+                         : flow.action === "verify_phrase" ? "Checking the recovery phrase…"
+                         : "Writing to the card…"
         flow.phase = "working"; flow.errorMsg = ""
         logos.watch(flow.backend.administer(JSON.stringify(p)), function (raw) { flow.handleReply(raw) })
     }
@@ -237,9 +265,25 @@ LogosDialog {
         flow.phase = "input"
         enterStep(true)
     }
+    // Create (generate) is two-phase: generate the phrase, show it for backup, then load it with the
+    // PIN already entered. The seed stays in memory only until the flow closes.
+    function loadGenerated() {
+        var p = { action: "load_phrase", reader: flow.card.reader, cardId: flow.card.adminId, keyUid: flow.card.keyUid || "",
+                  phrase: flow.seedWords, pin: flow.vals.pin, passphrase: "", confirmation: "BACKED UP" }
+        flow.workingText = "Writing to the card…"
+        flow.phase = "working"; flow.errorMsg = ""
+        logos.watch(flow.backend.administer(JSON.stringify(p)), function (raw) { flow.handleReply(raw) })
+    }
     function handleReply(raw) {
         var r; try { r = JSON.parse(raw) } catch (e) { r = { ok:false, error:"The card did not return a valid response. Reconnect it and try again." } }
-        if (r.ok) { if (flow.plan.result && r.data !== undefined) flow.resultText = r.data; flow.phase = "success"; flow.clearSecrets(); return }
+        if (r.ok) {
+            // A generated phrase: show it (blurred) for backup before loading it onto the card.
+            if (flow.plan.generate && r.phrase !== undefined && flow.seedWords === "") {
+                flow.seedWords = r.phrase; flow.revealed = false; flow.phase = "reveal"; return
+            }
+            if (flow.plan.result && r.data !== undefined) flow.resultText = r.data
+            flow.phase = "success"; flow.clearSecrets(); return
+        }
         var msg = r.error || "The operation failed."
         var wrongSecret = r.code === "WrongSecret" || /wrong (pin|puk|pairing)/i.test(msg)
         var blocked = /block/i.test(msg)
@@ -319,30 +363,51 @@ LogosDialog {
                     }
                 }
 
-                // Text / confirmation field.
-                LogosTextField {
-                    id: txt
-                    objectName: "cardFlowText"
+                // Text / confirmation field, with an optional "use the default" prefill checkbox.
+                ColumnLayout {
                     visible: flow.isText
                     Layout.alignment: Qt.AlignHCenter
                     Layout.topMargin: Theme.spacing.medium
                     Layout.bottomMargin: Theme.spacing.medium
-                    Layout.preferredWidth: 280
-                    placeholderText: flow.step && flow.step.placeholder ? flow.step.placeholder : ""
-                    echoMode: (flow.step && flow.step.secret) ? TextInput.Password : TextInput.Normal
-                    onTextChanged: if (flow.errorMsg) flow.errorMsg = ""
+                    spacing: Theme.spacing.small
+                    LogosTextField {
+                        id: txt
+                        objectName: "cardFlowText"
+                        Layout.preferredWidth: 280
+                        readOnly: defChk.visible && defChk.checked
+                        placeholderText: flow.step && flow.step.placeholder ? flow.step.placeholder : ""
+                        echoMode: (flow.step && flow.step.secret && !(defChk.visible && defChk.checked)) ? TextInput.Password : TextInput.Normal
+                        onTextChanged: if (flow.errorMsg) flow.errorMsg = ""
+                    }
+                    LogosCheckbox {
+                        id: defChk
+                        objectName: "cardFlowDefault"
+                        visible: flow.isText && flow.step && flow.step.defaultValue !== undefined
+                        Layout.maximumWidth: 280
+                        text: flow.step && flow.step.defaultLabel ? flow.step.defaultLabel : ""
+                        onToggled: txt.text = checked ? flow.step.defaultValue : ""
+                    }
                 }
 
-                // Choice field.
-                LogosComboBox {
-                    id: combo
+                // Choice field — radio buttons (one tap, no dropdown).
+                ColumnLayout {
+                    id: radioGroup
                     objectName: "cardFlowChoice"
                     visible: flow.isChoice
                     Layout.alignment: Qt.AlignHCenter
                     Layout.topMargin: Theme.spacing.medium
                     Layout.bottomMargin: Theme.spacing.medium
-                    Layout.preferredWidth: 280
-                    model: flow.step && flow.step.options ? flow.step.options : []
+                    spacing: Theme.spacing.tiny
+                    Repeater {
+                        model: flow.step && flow.step.options ? flow.step.options : []
+                        delegate: LogosRadioButton {
+                            required property string modelData
+                            required property int index
+                            text: modelData
+                            checked: index === flow.choiceIndex
+                            onClicked: { var d = flow.vals; d[flow.step.key] = index; flow.vals = d }
+                        }
+                    }
                 }
 
                 // Recovery-phrase grid, bounded and scrollable so a 24-word phrase fits the modal.
@@ -392,7 +457,7 @@ LogosDialog {
                 visible: flow.phase === "working"
                 anchors.centerIn: parent; width: parent.width
                 spacing: Theme.spacing.small
-                LogosText { Layout.alignment: Qt.AlignHCenter; text: "Writing to the card…"; color: Theme.palette.text; font.weight: Theme.typography.weightBold }
+                LogosText { Layout.alignment: Qt.AlignHCenter; text: flow.workingText; color: Theme.palette.text; font.weight: Theme.typography.weightBold }
                 LogosText { Layout.alignment: Qt.AlignHCenter; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; text: "Keep the card on the reader until it finishes."; color: Theme.palette.textSecondary; font.pixelSize: Theme.typography.secondaryText }
             }
 
@@ -421,6 +486,94 @@ LogosDialog {
                 spacing: Theme.spacing.small
                 LogosText { Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; text: flow.errorMsg; color: Theme.palette.error }
             }
+
+            // Reveal (Create): the generated phrase. Hidden behind a privacy warning + Reveal button;
+            // once revealed, the words are shown numbered for writing down. Held in memory only until
+            // the flow closes.
+            Item {
+                visible: flow.phase === "reveal"
+                anchors.fill: parent
+
+                // Covered: privacy warning + a Reveal button (no words shown yet).
+                ColumnLayout {
+                    visible: !flow.revealed
+                    anchors.centerIn: parent; width: parent.width - 2 * Theme.spacing.medium
+                    spacing: Theme.spacing.small
+                    LogosText { Layout.alignment: Qt.AlignHCenter; text: "Your recovery phrase is ready"; color: Theme.palette.text; font.weight: Theme.typography.weightBold; font.pixelSize: Theme.typography.subtitleText }
+                    LogosText { Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; text: "Make sure no one can see your screen and nothing is recording it. Then reveal it and write it down."; color: Theme.palette.textSecondary; font.pixelSize: Theme.typography.secondaryText }
+                    LogosButton { objectName: "cardFlowReveal"; Layout.alignment: Qt.AlignHCenter; Layout.topMargin: Theme.spacing.medium; text: "Reveal"; variant: LogosButton.Variant.Primary; onClicked: flow.revealed = true }
+                }
+
+                // Revealed: a gray instruction, then the numbered words in three even columns. The
+                // block is centred in the modal; a long (24-word) phrase scrolls within a cap.
+                ColumnLayout {
+                    visible: flow.revealed
+                    anchors.centerIn: parent
+                    width: parent.width
+                    spacing: Theme.spacing.medium
+                    LogosText {
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap
+                        text: "Write these words down in order and keep them safe. Anyone with them controls the wallet."
+                        color: Theme.palette.textSecondary; font.pixelSize: Theme.typography.secondaryText
+                    }
+                    LogosScrollView {
+                        id: seedScroll
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Math.min(seedGridInner.implicitHeight + 4, 300)
+                        contentWidth: availableWidth
+                        GridLayout {
+                            id: seedGridInner
+                            width: seedScroll.availableWidth
+                            columns: 3
+                            columnSpacing: Theme.spacing.large; rowSpacing: Theme.spacing.medium
+                            Repeater {
+                                model: flow.seedList
+                                delegate: RowLayout {
+                                    required property string modelData
+                                    required property int index
+                                    Layout.fillWidth: true
+                                    Layout.preferredWidth: 1
+                                    spacing: Theme.spacing.tiny
+                                    LogosText { text: (index + 1) + "."; color: Theme.palette.textTertiary; font.pixelSize: Theme.typography.secondaryText }
+                                    LogosText { Layout.fillWidth: true; text: modelData; textFormat: Text.PlainText; color: Theme.palette.text; font.pixelSize: Theme.typography.secondaryText }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Confirm (Create): re-enter a few words to prove the phrase was written down. The group is
+            // centred; a wrong word shows an error once the field loses focus.
+            ColumnLayout {
+                visible: flow.phase === "confirm"
+                anchors.centerIn: parent
+                width: parent.width - 2 * Theme.spacing.medium
+                spacing: Theme.spacing.small
+                LogosText { Layout.alignment: Qt.AlignHCenter; text: "Confirm your backup"; color: Theme.palette.text; font.weight: Theme.typography.weightBold; font.pixelSize: Theme.typography.subtitleText }
+                LogosText { Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; text: "Enter these words from your recovery phrase to confirm you wrote it down."; color: Theme.palette.textSecondary; font.pixelSize: Theme.typography.secondaryText }
+                ColumnLayout {
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.topMargin: Theme.spacing.medium
+                    spacing: Theme.spacing.small
+                    RowLayout { spacing: Theme.spacing.small
+                        LogosText { Layout.preferredWidth: 32; horizontalAlignment: Text.AlignRight; text: "#" + ((flow.confirmPos[0] || 0) + 1); color: Theme.palette.textSecondary }
+                        ColumnLayout { spacing: 2
+                            LogosTextField { id: cw0; Layout.preferredWidth: 220; placeholderText: "type word" }
+                            LogosText { visible: cw0.text.trim().length > 0 && !cw0.textInput.activeFocus && cw0.text.trim().toLowerCase() !== (flow.seedList[flow.confirmPos[0]] || ""); text: "That is not word #" + ((flow.confirmPos[0] || 0) + 1); color: Theme.palette.error; font.pixelSize: Theme.typography.secondaryText } } }
+                    RowLayout { spacing: Theme.spacing.small
+                        LogosText { Layout.preferredWidth: 32; horizontalAlignment: Text.AlignRight; text: "#" + ((flow.confirmPos[1] || 0) + 1); color: Theme.palette.textSecondary }
+                        ColumnLayout { spacing: 2
+                            LogosTextField { id: cw1; Layout.preferredWidth: 220; placeholderText: "type word" }
+                            LogosText { visible: cw1.text.trim().length > 0 && !cw1.textInput.activeFocus && cw1.text.trim().toLowerCase() !== (flow.seedList[flow.confirmPos[1]] || ""); text: "That is not word #" + ((flow.confirmPos[1] || 0) + 1); color: Theme.palette.error; font.pixelSize: Theme.typography.secondaryText } } }
+                    RowLayout { spacing: Theme.spacing.small
+                        LogosText { Layout.preferredWidth: 32; horizontalAlignment: Text.AlignRight; text: "#" + ((flow.confirmPos[2] || 0) + 1); color: Theme.palette.textSecondary }
+                        ColumnLayout { spacing: 2
+                            LogosTextField { id: cw2; Layout.preferredWidth: 220; placeholderText: "type word" }
+                            LogosText { visible: cw2.text.trim().length > 0 && !cw2.textInput.activeFocus && cw2.text.trim().toLowerCase() !== (flow.seedList[flow.confirmPos[2]] || ""); text: "That is not word #" + ((flow.confirmPos[2] || 0) + 1); color: Theme.palette.error; font.pixelSize: Theme.typography.secondaryText } } }
+                }
+            }
         }
 
         // Footer — per phase, pinned to the bottom by the fixed-height body above.
@@ -428,6 +581,8 @@ LogosDialog {
             Layout.fillWidth: true
             spacing: Theme.spacing.small
             LogosButton { visible: flow.phase === "input"; text: flow.idx === 0 ? "Cancel" : "Back"; onClicked: flow.goBack() }
+            LogosButton { visible: flow.phase === "reveal"; text: "Cancel"; onClicked: flow.close() }
+            LogosButton { visible: flow.phase === "confirm"; text: "Back"; onClicked: { flow.phase = "reveal" } }
             Item { Layout.fillWidth: true }
             LogosButton {
                 visible: flow.phase === "input"
@@ -435,6 +590,19 @@ LogosDialog {
                 variant: LogosButton.Variant.Primary
                 enabled: flow.stepValid
                 onClicked: flow.continueStep()
+            }
+            LogosButton {
+                visible: flow.phase === "reveal" && flow.revealed
+                text: "Continue"
+                variant: LogosButton.Variant.Primary
+                onClicked: flow.startConfirm()
+            }
+            LogosButton {
+                visible: flow.phase === "confirm"
+                text: "Load onto card"
+                variant: LogosButton.Variant.Primary
+                enabled: flow.confirmValid
+                onClicked: flow.loadGenerated()
             }
             LogosButton { visible: flow.phase === "success"; text: "Done"; variant: LogosButton.Variant.Primary; onClicked: flow.close() }
             LogosButton { visible: flow.phase === "error" && flow.pinBlocked; text: "Unblock PIN"; variant: LogosButton.Variant.Primary; onClicked: flow.startUnblock() }
