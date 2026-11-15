@@ -89,7 +89,7 @@ ColumnLayout {
         // PIN locked: recovery only. Everything that needs the current PIN is hidden.
         if (locked) {
             var r = [{id:"unblock_pin",label:"Unblock PIN"}]
-            if (canReset) r.push({id:"factory_reset",label:"Factory reset card"})
+            if (canReset) r.push({id:"factory_reset",label:"Factory reset"})
             return r
         }
 
@@ -101,17 +101,21 @@ ColumnLayout {
                 {id:"generate_key",label:"Generate keys without backup"}])
         } else {
             ops = ops.concat([{id:"verify_phrase",label:"Check recovery phrase"},
-                {id:"remove_key",label:"Erase keys from card"}])
+                {id:"remove_key",label:"Erase keys"}])
         }
         // Credential + metadata: any usable card (has PIN, not locked).
         ops = ops.concat([{id:"change_pin",label:"Change PIN"},{id:"change_puk",label:"Change PUK"}])
         if (selected.secureChannel === 1) ops = ops.concat([{id:"change_pairing_password",label:"Change pairing password"},{id:"unpair",label:"Remove a pairing slot"}])
-        ops = ops.concat([{id:"set_name",label:"Update card name"},{id:"set_ndef",label:"NFC text message"},
+        ops = ops.concat([{id:"set_name",label:"Update name"},{id:"set_ndef",label:"NFC text message"},
             {id:"read_data",label:"Read card data"},{id:"write_data",label:"Write card data"}])
-        if (canReset) ops.push({id:"factory_reset",label:"Factory reset card"})
+        if (canReset) ops.push({id:"factory_reset",label:"Factory reset"})
         return ops
     }
-    readonly property string action: choices[operation.currentIndex] ? choices[operation.currentIndex].id : ""
+    // The chosen operation, set ONLY by a choice-button press and cleared when its dialog closes.
+    // (It used to be derived from a hidden combo whose index auto-snapped to 0 on model rebuilds,
+    // which spuriously set the action and auto-opened a flow.)
+    property string action: ""
+    readonly property var actionChoice: choices.filter(function (o) { return o.id === admin.action })[0] || null
     // ADR-A: present the available actions as a visible, risk-grouped list instead of one dropdown.
     // Only actions available for the current card state appear (reuse `choices`); the destructive
     // tier is the set that already carries a typed-confirmation gate. `adminOperation` stays as the
@@ -140,7 +144,7 @@ ColumnLayout {
     readonly property string blocked: {
         if (!selected || busy || !action) return ""
         if (changed) return "The card changed. Press Refresh card to see it as it is now."
-        if (loadsKeys && holdsKeys) return "This card already holds keys. Erase them first (Erase keys from card) to put another wallet on it."
+        if (loadsKeys && holdsKeys) return "This card already holds keys. Erase them first (Erase keys) to put another wallet on it."
         if (needsPin && pin.text.length !== 6) return loadingGenerated ? "Type the card's PIN again to load the phrase." : "Type the card's PIN."
         if (needsNewPin && (newPin.text.length !== 6 || newPin.text !== repeatPin.text)) return "Type the new PIN twice."
         if (needsPhrase && phrase.text.trim().length === 0) return "Type the recovery phrase."
@@ -149,7 +153,7 @@ ColumnLayout {
         return ""
     }
     function clearSecrets() { advanced.checked = false; customPairing.checked = false; pin.text = ""; newPin.text = ""; repeatPin.text = ""; puk.text = ""; repeatPuk.text = ""; pairing.text = ""; repeatPairing.text = ""; alternate.text = ""; repeatAlternate.text = ""; phrase.text = ""; passphrase.text = ""; generated = []; backedUp.checked = false; confirm.text = "" }
-    function selectCard(index) { clearSecrets(); selected = index >= 0 ? usableCards[index] : null; operation.currentIndex = -1; message = ""; if (typeof opDialog !== "undefined") opDialog.close(); checkAuthenticity(); readCardName() }
+    function selectCard(index) { clearSecrets(); selected = index >= 0 ? usableCards[index] : null; admin.action = ""; message = ""; if (typeof opDialog !== "undefined") opDialog.close(); checkAuthenticity(); readCardName() }
     // Card status and authenticity need no PIN; run them directly from the status section
     // without the action/confirm flow. Self-contained so it never touches a pending action.
     function runStatusOp(id) {
@@ -189,7 +193,8 @@ ColumnLayout {
     readonly property var guidedActions: ["change_pin", "change_puk", "unblock_pin",
         "set_name", "set_ndef", "pair", "change_pairing_password", "unpair",
         "generate_key", "remove_key", "factory_reset",
-        "initialize", "read_data", "write_data"]
+        "initialize", "read_data", "write_data",
+        "verify_phrase", "load_phrase"]
     onActionChanged: {
         clearSecrets(); data.text = ""; message = ""
         if (action === "") return
@@ -334,8 +339,8 @@ ColumnLayout {
                         Layout.fillWidth: true
                         visible: !groupItem.modelData.advanced || admin.advancedOpen
                         enabled: !!admin.selected && !admin.busy && !admin.changed
-                        text: (admin.action === modelData.id ? "●  " : "") + modelData.label
-                        onClicked: operation.currentIndex = admin.choices.findIndex(function(o) { return o.id === modelData.id })
+                        text: modelData.label
+                        onClicked: admin.action = modelData.id
                         Component.onCompleted: if (groupItem.modelData.danger) {
                             actBtn.labelItem.color = Qt.binding(function() { return actBtn.enabled ? Theme.palette.error : Theme.palette.textMuted })
                             actBtn.backgroundItem.border.color = Qt.binding(function() { return actBtn.enabled ? Theme.palette.error : Theme.palette.border })
@@ -344,13 +349,12 @@ ColumnLayout {
                 }
             }
         }
-        LogosComboBox { id: operation; objectName: "adminOperation"; visible: false; Layout.fillWidth: true; model: admin.choices.map(function(o) { return o.label }); enabled: !!admin.selected && !admin.busy && !admin.changed }
         CardFlow {
             id: cardFlow
             objectName: "cardFlowDialog"
             backend: admin.backend
             onFinished: function (ok) {
-                operation.currentIndex = -1
+                admin.action = ""
                 // Re-point selected at the refreshed card so attempts/state are current for the next op.
                 if (admin.selected) {
                     for (var i = 0; i < admin.usableCards.length; i++) {
@@ -364,12 +368,12 @@ ColumnLayout {
         LogosDialog {
             id: opDialog
             objectName: "adminOpDialog"
-            title: admin.infoTitle !== "" ? admin.infoTitle : (admin.choices[operation.currentIndex] ? admin.choices[operation.currentIndex].label : "Card action")
+            title: admin.infoTitle !== "" ? admin.infoTitle : (admin.actionChoice ? admin.actionChoice.label : "Card action")
             parent: Overlay.overlay
             anchors.centerIn: parent
             width: Math.min((parent ? parent.width : 600) - 40, 560)
             closePolicy: admin.busy ? Popup.NoAutoClose : (Popup.CloseOnEscape | Popup.CloseOnPressOutside)
-            onClosed: if (!admin.busy) { admin.infoTitle = ""; operation.currentIndex = -1 }
+            onClosed: if (!admin.busy) { admin.infoTitle = ""; admin.action = "" }
             contentItem: ColumnLayout {
                 spacing: Theme.spacing.small
                 LogosScrollView {

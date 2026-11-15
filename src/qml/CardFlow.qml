@@ -3,6 +3,7 @@ import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import Logos.Controls
 import Logos.Theme
+import "accountkit" as Accounts
 
 // A guided, one-input-per-screen flow for the card operations, modelled on the Status Keycard flows:
 // a title line that keeps the flow name and the card being operated on, a centred step (step N of M,
@@ -38,7 +39,7 @@ LogosDialog {
             steps:[ {key:"puk", kind:"puk", title:"Enter your PUK", desc:"The 12-digit PUK unblocks the PIN."},
                     {key:"newPin", kind:"pin", title:"Choose a new PIN", desc:"Six digits you will remember. Avoid 000000 or 123456."},
                     {key:"repeat", kind:"pin", title:"Confirm your new PIN", desc:"Enter the new PIN again.", match:"newPin"} ] }
-        if (action === "set_name") return { title:"Update card name", secret:"pin", retry:"pinRetries", success:"The card name has been updated.",
+        if (action === "set_name") return { title:"Update name", secret:"pin", retry:"pinRetries", success:"The card name has been updated.",
             steps:[ pin("Enter your PIN", "The 6-digit PIN for this card."),
                     {key:"name", kind:"text", title:"Name this card", desc:"Shown on the card itself (up to 20 characters). It does not rename the wallet. Leave empty to clear it.", placeholder:"Card name", maxLen:20, minLen:0} ] }
         if (action === "set_ndef") return { title:"NFC text message", secret:"pin", retry:"pinRetries", success:"The NFC text has been updated.",
@@ -57,11 +58,11 @@ LogosDialog {
             steps:[ {key:"warn", kind:"info", warn:true, title:"No recovery backup", desc:"This generates keys with NO recovery phrase. If the card is lost or reset, its wallet cannot be recovered. Use Create recovery phrase for a recoverable wallet."},
                     pin("Enter your PIN", "The 6-digit PIN for this card."),
                     {key:"confirm", kind:"confirm", expect:"NO BACKUP", title:"Type to confirm", desc:"Type NO BACKUP to confirm you understand there is no recovery.", placeholder:"NO BACKUP"} ] }
-        if (action === "remove_key") return { title:"Erase keys from card", secret:"pin", retry:"pinRetries", success:"The keys were erased from the card.",
+        if (action === "remove_key") return { title:"Erase keys", secret:"pin", retry:"pinRetries", success:"The keys were erased from the card.",
             steps:[ {key:"warn", kind:"info", warn:true, title:"Erase recovery keys", desc:"Erases the recovery keys from this card. You need a backup to restore access to funds. PIN, PUK and pairings remain. Saved accounts on this computer are kept."},
                     pin("Enter your PIN", "The 6-digit PIN for this card."),
                     {key:"confirm", kind:"confirm", expect:"ERASE", title:"Type to confirm", desc:"Type ERASE to confirm.", placeholder:"ERASE"} ] }
-        if (action === "factory_reset") return { title:"Factory reset card", secret:"", retry:"", success:"The card has been factory reset.",
+        if (action === "factory_reset") return { title:"Factory reset", secret:"", retry:"", success:"The card has been factory reset.",
             steps:[ {key:"warn", kind:"info", warn:true, title:"Erase everything on the card", desc:"Factory reset erases keys, PIN, PUK, pairings and card metadata. It needs no PIN. You need a backup to restore access to funds. Saved names and accounts on this computer are kept."},
                     {key:"confirm", kind:"confirm", expect:"RESET", title:"Type to confirm", desc:"Type RESET to confirm.", placeholder:"RESET"} ] }
         if (action === "initialize") {
@@ -83,6 +84,18 @@ LogosDialog {
                     {key:"hex", kind:"text", hexOnly:true, title:"Hexadecimal data", desc:"Up to 127 bytes, as hexadecimal.", placeholder:"Hexadecimal data", minLen:2, maxLen:254},
                     {key:"pin", kind:"pin", title:"Enter your PIN", desc:"The 6-digit PIN for this card."},
                     {key:"confirm", kind:"confirm", expect:"WRITE", title:"Type to confirm", desc:"Type WRITE to confirm.", placeholder:"WRITE"} ] }
+        if (action === "verify_phrase") return { title:"Check recovery phrase", secret:"pin", retry:"pinRetries", success:"The recovery phrase and passphrase match this card's wallet.",
+            steps:[ {key:"phrase", kind:"phrase", title:"Enter the recovery phrase", desc:"Type the recovery words, one per field, to check they match this card's wallet."},
+                    {key:"passphrase", kind:"text", secret:true, title:"BIP39 passphrase", desc:"Optional. Leave empty if the wallet has no passphrase.", placeholder:"Passphrase (optional)", minLen:0},
+                    {key:"pin", kind:"pin", title:"Enter your PIN", desc:"The 6-digit PIN for this card."} ] }
+        if (action === "load_phrase") return { title:"Import recovery phrase", secret:"pin", retry:"pinRetries", success:"Recovery keys loaded. Add accounts from the wallet to use them in apps.",
+            steps:[ {key:"phrase", kind:"phrase", title:"Enter the recovery phrase", desc:"Type your recovery words, one per field. They pass through this computer and are not saved here."},
+                    {key:"passphrase", kind:"text", secret:true, title:"BIP39 passphrase", desc:"Optional. Leave empty if the wallet has no passphrase.", placeholder:"Passphrase (optional)", minLen:0},
+                    {key:"backup", kind:"check", title:"Confirm your backup", desc:"These keys go onto the card. Make sure your written backup is safe.", checkLabel:"I have a secure backup of this recovery phrase and passphrase"},
+                    {key:"pin", kind:"pin", title:"Enter your PIN", desc:"The 6-digit PIN for this card."} ] }
+        if (action === "generate_phrase") return { title:"Create recovery phrase", secret:"pin", retry:"pinRetries", generate:true, success:"Recovery keys loaded. Add accounts from the wallet to use them in apps.",
+            steps:[ {key:"wordCount", kind:"choice", title:"How many words", desc:"A longer phrase is stronger. 12 and 24 are the usual choices.", options:["12 words","15 words","18 words","21 words","24 words"]},
+                    {key:"pin", kind:"pin", title:"Enter your PIN", desc:"The 6-digit PIN for this card."} ] }
         return { title:"", secret:"", retry:"", success:"", steps:[] }
     }
     readonly property var steps: plan.steps
@@ -98,6 +111,10 @@ LogosDialog {
     readonly property bool isPin: step && (step.kind === "pin" || step.kind === "puk")
     readonly property bool isText: step && (step.kind === "text" || step.kind === "confirm")
     readonly property bool isChoice: step && step.kind === "choice"
+    readonly property bool isPhrase: step && step.kind === "phrase"
+    readonly property bool isCheck: step && step.kind === "check"
+    // A flow with a recovery-phrase grid needs a taller modal (12-24 fields).
+    readonly property bool tall: steps.some(function (s) { return s.kind === "phrase" })
     readonly property int count: step && step.kind === "puk" ? 12 : 6
     readonly property bool lastStep: idx === steps.length - 1
     property string resultText: "" // data returned by a read operation, shown on the success screen
@@ -105,6 +122,8 @@ LogosDialog {
         if (!step) return false
         if (step.kind === "info" || step.kind === "choice") return true
         if (flow.isPin) return pinDots.valid
+        if (step.kind === "phrase") return phraseGrid.complete
+        if (step.kind === "check") return checkBox.checked
         if (step.kind === "confirm") return txt.text === step.expect
         if (step.digitsOnly && !/^[0-9]*$/.test(txt.text)) return false
         if (step.hexOnly && (!/^[0-9a-fA-F]*$/.test(txt.text) || txt.text.length % 2 !== 0)) return false
@@ -117,14 +136,14 @@ LogosDialog {
     anchors.centerIn: parent
     width: Math.min((parent ? parent.width : 600) - 40, 460)
     // Fixed height so the modal is the same size through input, working, success and failure, and a
-    // tip or an error never resizes it. The body fills this and each phase is centred inside it.
-    height: 404
+    // tip or an error never resizes it. A phrase flow (recovery-phrase grid) uses a taller box.
+    height: flow.tall ? 560 : 404
     closePolicy: phase === "working" ? Popup.NoAutoClose : Popup.CloseOnEscape
     onClosed: { clearSecrets(); flow.finished(flow.phase === "success") }
     onOpened: enterStep(false)
 
     function shortId(id) { var s = (id || "").split(":").pop(); return s.length > 16 ? s.slice(0,8) + "…" + s.slice(-8) : s }
-    function clearSecrets() { flow.vals = ({}); pinDots.clear(); txt.text = "" }
+    function clearSecrets() { flow.vals = ({}); pinDots.clear(); txt.text = ""; phraseGrid.clear() }
     function isWeak(s) {
         if (s.length < 6) return false
         var weak = ["000000","111111","222222","333333","444444","555555","666666","777777","888888","999999","123456","654321","012345","121212","123123"]
@@ -139,6 +158,8 @@ LogosDialog {
             txt.textInput.forceActiveFocus()
         }
         else if (flow.isChoice) { combo.currentIndex = (flow.step && flow.vals[flow.step.key] !== undefined) ? flow.vals[flow.step.key] : 0 }
+        else if (flow.isPhrase) { phraseGrid.text = flow.step ? (flow.vals[flow.step.key] || "") : "" }
+        else if (flow.isCheck) { checkBox.checked = flow.step ? (flow.vals[flow.step.key] === true) : false }
     }
     function begin() {
         flow.idx = 0; flow.vals = ({}); flow.phase = "input"; flow.errorMsg = ""; flow.noteMsg = ""
@@ -149,6 +170,8 @@ LogosDialog {
         if (!flow.step) return ""
         if (flow.step.kind === "info") return "ack"
         if (flow.isChoice) return combo.currentIndex
+        if (flow.isPhrase) return phraseGrid.text
+        if (flow.isCheck) return checkBox.checked
         return flow.isPin ? pinDots.value : txt.text
     }
     function clearCurrent() { if (flow.isPin) pinDots.clear(); else if (flow.isText) txt.text = ""; }
@@ -195,6 +218,8 @@ LogosDialog {
         else if (flow.action === "initialize") { p.newPin = flow.vals.newPin; p.puk = flow.vals.puk; if (flow.vals.pairing) p.pairingPassword = flow.vals.pairing }
         else if (flow.action === "read_data") { p.dataType = flow.vals.dataType === 0 ? 0 : 2 }
         else if (flow.action === "write_data") { p.pin = flow.vals.pin; p.dataType = flow.vals.dataType === 0 ? 0 : 2; p.text = flow.vals.hex; p.confirmation = flow.vals.confirm }
+        else if (flow.action === "verify_phrase") { p.pin = flow.vals.pin; p.phrase = flow.vals.phrase; p.passphrase = flow.vals.passphrase || "" }
+        else if (flow.action === "load_phrase") { p.pin = flow.vals.pin; p.phrase = flow.vals.phrase; p.passphrase = flow.vals.passphrase || ""; p.confirmation = "BACKED UP" }
         flow.phase = "working"; flow.errorMsg = ""
         logos.watch(flow.backend.administer(JSON.stringify(p)), function (raw) { flow.handleReply(raw) })
     }
@@ -318,6 +343,33 @@ LogosDialog {
                     Layout.bottomMargin: Theme.spacing.medium
                     Layout.preferredWidth: 280
                     model: flow.step && flow.step.options ? flow.step.options : []
+                }
+
+                // Recovery-phrase grid, bounded and scrollable so a 24-word phrase fits the modal.
+                LogosScrollView {
+                    id: phraseScroll
+                    visible: flow.isPhrase
+                    Layout.fillWidth: true
+                    Layout.topMargin: Theme.spacing.small
+                    Layout.preferredHeight: Math.min(phraseGrid.implicitHeight + 4, 300)
+                    contentWidth: availableWidth
+                    Accounts.PhraseGrid {
+                        id: phraseGrid
+                        objectName: "cardFlowPhrase"
+                        width: phraseScroll.availableWidth
+                        onTextChanged: if (flow.errorMsg) flow.errorMsg = ""
+                    }
+                }
+
+                // Backup confirmation.
+                LogosCheckbox {
+                    id: checkBox
+                    objectName: "cardFlowCheck"
+                    visible: flow.isCheck
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.topMargin: Theme.spacing.medium
+                    Layout.maximumWidth: flow.width - 2 * Theme.spacing.large
+                    text: flow.step && flow.step.checkLabel ? flow.step.checkLabel : ""
                 }
 
                 // One reserved, fixed-height line for an error or a tip, so it never resizes the modal.
