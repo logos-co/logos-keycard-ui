@@ -64,6 +64,25 @@ LogosDialog {
         if (action === "factory_reset") return { title:"Factory reset card", secret:"", retry:"", success:"The card has been factory reset.",
             steps:[ {key:"warn", kind:"info", warn:true, title:"Erase everything on the card", desc:"Factory reset erases keys, PIN, PUK, pairings and card metadata. It needs no PIN. You need a backup to restore access to funds. Saved names and accounts on this computer are kept."},
                     {key:"confirm", kind:"confirm", expect:"RESET", title:"Type to confirm", desc:"Type RESET to confirm.", placeholder:"RESET"} ] }
+        if (action === "initialize") {
+            // A fresh card: no current PIN. 3.x cards need a pairing password set here; 4.0 cards do
+            // not (and support an alternate PIN, left to default here).
+            var sc = flow.card ? flow.card.secureChannel : 2
+            var initSteps = [ {key:"newPin", kind:"pin", title:"Choose a PIN", desc:"Six digits you will remember. Avoid 000000 or 123456."},
+                              {key:"repeatPin", kind:"pin", title:"Confirm the PIN", desc:"Enter the PIN again.", match:"newPin"},
+                              {key:"puk", kind:"puk", title:"Choose a PUK", desc:"Twelve digits. Keep it somewhere safe, separate from the card."},
+                              {key:"repeatPuk", kind:"puk", title:"Confirm the PUK", desc:"Enter the PUK again.", match:"puk"} ]
+            if (sc === 1) initSteps.push({key:"pairing", kind:"text", secret:true, title:"Pairing password", desc:"A password apps use to pair with this card (1 to 128 characters).", placeholder:"Pairing password", minLen:1})
+            return { title:"Set up card", secret:"", retry:"", success:"The card is set up. Pair it if needed, then create or import its recovery keys.", steps:initSteps }
+        }
+        if (action === "read_data") return { title:"Read card data", secret:"", retry:"", success:"Card data read.", result:true,
+            steps:[ {key:"dataType", kind:"choice", title:"Which data", desc:"Read the public metadata area, or the Cash applet data, as hexadecimal.", options:["Public metadata","Cash applet data"]} ] }
+        if (action === "write_data") return { title:"Write card data", secret:"pin", retry:"pinRetries", success:"The card data was written.",
+            steps:[ {key:"warn", kind:"info", warn:true, title:"Replace card data", desc:"Replaces the selected public data area. Read and back up its current hex first. Other apps may use it for wallet metadata."},
+                    {key:"dataType", kind:"choice", title:"Which data", desc:"The public metadata area, or the Cash applet data.", options:["Public metadata","Cash applet data"]},
+                    {key:"hex", kind:"text", hexOnly:true, title:"Hexadecimal data", desc:"Up to 127 bytes, as hexadecimal.", placeholder:"Hexadecimal data", minLen:2, maxLen:254},
+                    {key:"pin", kind:"pin", title:"Enter your PIN", desc:"The 6-digit PIN for this card."},
+                    {key:"confirm", kind:"confirm", expect:"WRITE", title:"Type to confirm", desc:"Type WRITE to confirm.", placeholder:"WRITE"} ] }
         return { title:"", secret:"", retry:"", success:"", steps:[] }
     }
     readonly property var steps: plan.steps
@@ -78,14 +97,17 @@ LogosDialog {
     readonly property var step: steps[idx] || null
     readonly property bool isPin: step && (step.kind === "pin" || step.kind === "puk")
     readonly property bool isText: step && (step.kind === "text" || step.kind === "confirm")
+    readonly property bool isChoice: step && step.kind === "choice"
     readonly property int count: step && step.kind === "puk" ? 12 : 6
     readonly property bool lastStep: idx === steps.length - 1
+    property string resultText: "" // data returned by a read operation, shown on the success screen
     readonly property bool stepValid: {
         if (!step) return false
-        if (step.kind === "info") return true
+        if (step.kind === "info" || step.kind === "choice") return true
         if (flow.isPin) return pinDots.valid
         if (step.kind === "confirm") return txt.text === step.expect
         if (step.digitsOnly && !/^[0-9]*$/.test(txt.text)) return false
+        if (step.hexOnly && (!/^[0-9a-fA-F]*$/.test(txt.text) || txt.text.length % 2 !== 0)) return false
         var n = txt.text.length
         return n >= (step.minLen === undefined ? 1 : step.minLen) && (!step.maxLen || n <= step.maxLen)
     }
@@ -116,13 +138,19 @@ LogosDialog {
             txt.text = flow.step ? (flow.vals[flow.step.key] || "") : ""
             txt.textInput.forceActiveFocus()
         }
+        else if (flow.isChoice) { combo.currentIndex = (flow.step && flow.vals[flow.step.key] !== undefined) ? flow.vals[flow.step.key] : 0 }
     }
     function begin() {
         flow.idx = 0; flow.vals = ({}); flow.phase = "input"; flow.errorMsg = ""; flow.noteMsg = ""
-        flow.attempts = -1; flow.pinBlocked = false; flow.pukBlocked = false
+        flow.attempts = -1; flow.pinBlocked = false; flow.pukBlocked = false; flow.resultText = ""
         enterStep(false)
     }
-    function currentValue() { return flow.step && flow.step.kind === "info" ? "ack" : (flow.isPin ? pinDots.value : txt.text) }
+    function currentValue() {
+        if (!flow.step) return ""
+        if (flow.step.kind === "info") return "ack"
+        if (flow.isChoice) return combo.currentIndex
+        return flow.isPin ? pinDots.value : txt.text
+    }
     function clearCurrent() { if (flow.isPin) pinDots.clear(); else if (flow.isText) txt.text = ""; }
     function continueStep() {
         if (!flow.step || !flow.stepValid) return
@@ -164,6 +192,9 @@ LogosDialog {
         else if (flow.action === "generate_key") { p.pin = flow.vals.pin; p.confirmation = flow.vals.confirm }
         else if (flow.action === "remove_key") { p.pin = flow.vals.pin; p.confirmation = flow.vals.confirm }
         else if (flow.action === "factory_reset") { p.confirmation = flow.vals.confirm }
+        else if (flow.action === "initialize") { p.newPin = flow.vals.newPin; p.puk = flow.vals.puk; if (flow.vals.pairing) p.pairingPassword = flow.vals.pairing }
+        else if (flow.action === "read_data") { p.dataType = flow.vals.dataType === 0 ? 0 : 2 }
+        else if (flow.action === "write_data") { p.pin = flow.vals.pin; p.dataType = flow.vals.dataType === 0 ? 0 : 2; p.text = flow.vals.hex; p.confirmation = flow.vals.confirm }
         flow.phase = "working"; flow.errorMsg = ""
         logos.watch(flow.backend.administer(JSON.stringify(p)), function (raw) { flow.handleReply(raw) })
     }
@@ -183,7 +214,7 @@ LogosDialog {
     }
     function handleReply(raw) {
         var r; try { r = JSON.parse(raw) } catch (e) { r = { ok:false, error:"The card did not return a valid response. Reconnect it and try again." } }
-        if (r.ok) { flow.phase = "success"; flow.clearSecrets(); return }
+        if (r.ok) { if (flow.plan.result && r.data !== undefined) flow.resultText = r.data; flow.phase = "success"; flow.clearSecrets(); return }
         var msg = r.error || "The operation failed."
         var wrongSecret = r.code === "WrongSecret" || /wrong (pin|puk|pairing)/i.test(msg)
         var blocked = /block/i.test(msg)
@@ -277,6 +308,18 @@ LogosDialog {
                     onTextChanged: if (flow.errorMsg) flow.errorMsg = ""
                 }
 
+                // Choice field.
+                LogosComboBox {
+                    id: combo
+                    objectName: "cardFlowChoice"
+                    visible: flow.isChoice
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.topMargin: Theme.spacing.medium
+                    Layout.bottomMargin: Theme.spacing.medium
+                    Layout.preferredWidth: 280
+                    model: flow.step && flow.step.options ? flow.step.options : []
+                }
+
                 // One reserved, fixed-height line for an error or a tip, so it never resizes the modal.
                 Item {
                     Layout.fillWidth: true
@@ -308,6 +351,15 @@ LogosDialog {
                 spacing: Theme.spacing.small
                 LogosText { Layout.alignment: Qt.AlignHCenter; text: "Done"; color: Theme.palette.success; font.weight: Theme.typography.weightBold; font.pixelSize: Theme.typography.subtitleText }
                 LogosText { Layout.alignment: Qt.AlignHCenter; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; text: flow.plan.success; color: Theme.palette.text }
+                // Data returned by a read operation, as selectable hexadecimal.
+                LogosText {
+                    visible: flow.resultText !== ""
+                    Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small
+                    horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WrapAnywhere
+                    text: flow.resultText; textFormat: Text.PlainText
+                    font.family: Theme.typography.mono; font.pixelSize: Theme.typography.secondaryText
+                    color: Theme.palette.textSecondary
+                }
             }
 
             // Terminal error — centred.
