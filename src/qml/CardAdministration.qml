@@ -184,7 +184,38 @@ ColumnLayout {
         }
     }
     onChangedChanged: if (changed) { clearSecrets(); message = "The card or wallet changed. Select the card again before continuing."; failed = true; opDialog.close() }
-    onActionChanged: { clearSecrets(); data.text = ""; message = ""; if (action !== "") opDialog.open() }
+    // The PIN-centric operations use the guided multi-step flow (CardFlow); everything else still
+    // uses the single-form opDialog until those flows are converted too.
+    readonly property var guidedActions: ["change_pin", "change_puk", "unblock_pin",
+        "set_name", "set_ndef", "pair", "change_pairing_password", "unpair",
+        "generate_key", "remove_key", "factory_reset"]
+    onActionChanged: {
+        clearSecrets(); data.text = ""; message = ""
+        if (action === "") return
+        if (admin.guidedActions.indexOf(action) >= 0) {
+            cardFlow.action = action
+            cardFlow.card = admin.selected
+            cardFlow.cardName = admin.onCardName === "Checking…" ? "" : admin.onCardName
+            cardFlow.walletId = admin.walletIdFor()
+            cardFlow.begin()
+            cardFlow.open()
+        } else {
+            opDialog.open()
+        }
+    }
+    // The master fingerprint (Wallet ID) for the selected card's wallet, read from cardGroups; "" when
+    // the card holds no keys or the fingerprint is not yet known.
+    function walletIdFor() {
+        if (!selected || !selected.keyUid) return ""
+        for (var i = 0; i < cardGroups.length; i++) {
+            var g = cardGroups[i]
+            if ((g.id || "") === "seed:" + selected.keyUid || g.keyUid === selected.keyUid) {
+                var accs = g.accounts || []
+                for (var j = 0; j < accs.length; j++) if (accs[j].fingerprint) return accs[j].fingerprint
+            }
+        }
+        return ""
+    }
     function perform() {
         if (!selected || changed || busy) return
         var op = loadingGenerated ? "load_phrase" : action
@@ -313,6 +344,22 @@ ColumnLayout {
             }
         }
         LogosComboBox { id: operation; objectName: "adminOperation"; visible: false; Layout.fillWidth: true; model: admin.choices.map(function(o) { return o.label }); enabled: !!admin.selected && !admin.busy && !admin.changed }
+        CardFlow {
+            id: cardFlow
+            objectName: "cardFlowDialog"
+            backend: admin.backend
+            onFinished: function (ok) {
+                operation.currentIndex = -1
+                // Re-point selected at the refreshed card so attempts/state are current for the next op.
+                if (admin.selected) {
+                    for (var i = 0; i < admin.usableCards.length; i++) {
+                        var c = admin.usableCards[i]
+                        if (c.reader === admin.selected.reader && c.adminId === admin.selected.adminId) { admin.selected = c; break }
+                    }
+                }
+                admin.readCardName()
+            }
+        }
         LogosDialog {
             id: opDialog
             objectName: "adminOpDialog"
