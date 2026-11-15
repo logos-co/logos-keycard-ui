@@ -211,7 +211,7 @@ Item {
                 ? shortId(c.serial) + (c.verification === "verified" ? " · verified" : c.verification === "different" ? " · different wallet" : " · verify on first use")
                 : (nm ? nm + " · " : "") + "card " + shortId(c.id)
             out.push({ id: "device" + i, tag: tag, text: text, card: card,
-                       actions: card ? [{ id: "admin", label: "Card administration…", enabled: !root.working }] : [] })
+                       actions: card ? [{ id: "admin", label: "Card administration", enabled: !root.working }] : [] })
             if (card && card.trustedByPerson === true)
                 out.push({ id: trusted++ ? "trust" + trusted : "trust", text: "You trusted this card although Keycard did not certify it.",
                            warn: true, card: card, actions: [{ id: "stoptrust", label: "Stop trusting" }] })
