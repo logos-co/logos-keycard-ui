@@ -45,6 +45,45 @@ Item {
     // or a keyless card): shown apart so a device is never mistaken for a wallet.
     readonly property var identifiedWallets: wallets.filter(function(g) { return g.id.indexOf("seed:") === 0 })
     readonly property var unidentified: wallets.filter(function(g) { return g.id.indexOf("seed:") !== 0 })
+    // A connected Shell holds a seed the app cannot read without asking the device. Until the person
+    // sends an Identify request and approves it on the Shell screen, we do not know which wallet is
+    // inside, so no wallet card and no transport strip is touched: the Shell surfaces only as a
+    // dismissible notification (below) and a yellow header chip. A keyless card (non-shell) still
+    // uses the "Not identified yet" card list.
+    // A connected Shell's current connection counts as identified only while the on-device
+    // confirmation is live: keycard_shell_module reports that as verifiedMasterKeyId, which is
+    // session-scoped and dropped when the Shell disconnects (backend: "Session verification is
+    // temporary: never turn USB presence into a saved seed association"). So a re-seated Shell must
+    // be identified again, even though the app still remembers which wallet that serial belongs to
+    // (its saved shell group). Keying off the saved group instead left a re-plugged Shell
+    // green-chipped and unusable, with no prompt to re-identify.
+    function shellVerified(d) { return !!(d && d.verifiedMasterKeyId) }
+    readonly property var unidentifiedCards: unidentified.filter(function(g) { return g.transport !== "shell" })
+    property var dismissedShells: ({})
+    // The Shell whose identify is in flight. Identify takes several on-device approvals (the wallet
+    // key, then one per saved account), and the polled export state dips out of "working" between
+    // them, so the notification holds its working state on this flag until the job ends, rather than
+    // flicking back to "Identify" after the first approval.
+    property string identifyingSerial: ""
+    onExportingChanged: {
+        var st = (root.exporting && root.exporting.state) || ""
+        if (st === "done" || st === "failed") root.identifyingSerial = ""
+    }
+    readonly property var pendingShells: root.ready ? root.shellDevices.filter(function(d) {
+        return !root.shellVerified(d) && !root.dismissedShells[d.serial]
+    }) : []
+    readonly property bool anyShellUnidentified: root.ready && root.shellDevices.some(function(d) { return !root.shellVerified(d) })
+    // A dismissed Shell notification comes back when that Shell is re-seated: prune serials no longer present.
+    onShellDevicesChanged: {
+        var present = {}; root.shellDevices.forEach(function(d) { present[d.serial] = true })
+        var keep = {}, changed = false
+        for (var s in root.dismissedShells) { if (present[s]) keep[s] = true; else changed = true }
+        if (changed) root.dismissedShells = keep
+        if (root.identifyingSerial) {
+            var d = root.shellDevices.find(function(x) { return x.serial === root.identifyingSerial })
+            if (!d || root.shellVerified(d)) root.identifyingSerial = ""
+        }
+    }
     readonly property var accounts: ready ? j(backend.accountsJson, "[]") : []
     readonly property var unsigned: cards.filter(function(c) { return c.untrusted !== undefined })
     // Header connection state, from signals the view already has. The finer negative cases
@@ -132,7 +171,6 @@ Item {
         var unknown = g.legacy || g.pending || (g.id.indexOf("seed:") === 0 && !hasAccounts(g))
         return unknown ? add
             : add.concat([{ id: "rename", label: "Rename…" }])
-                 .concat(g.id.indexOf("seed:") === 0 && root.shellDevices.length > 0 ? [{ id: "verify", label: "Verify wallet…", enabled: !root.working }] : [])
                  .concat([{ id: "forget", label: "Forget wallet…" }])
     }
     function aliasesOf(g) { return (g.aliases || []).filter(function(n) { return n !== g.name }) }
@@ -165,10 +203,14 @@ Item {
         connectedDevices(g).forEach(function(c, i) {
             var card = c.transport === "shell" ? null : cardFor(c)
             var nm = c.transport === "shell" ? "" : cardNameFor(c)
+            // The device-type tag is rendered green, so the connection reads as made at a glance; the
+            // rest (serial / name / card id) stays secondary. A Shell strip only shows once verified,
+            // so its tail is the verified case.
+            var tag = c.transport === "shell" ? "Shell USB" : "Card reader"
             var text = c.transport === "shell"
-                ? "Shell USB · " + shortId(c.serial) + (c.verification === "verified" ? " · USB connected; wallet verified" : c.verification === "different" ? " · USB connected; different wallet" : " · USB connected; verify on first use")
-                : "Card reader · " + (nm ? nm + " · " : "") + "card " + shortId(c.id)
-            out.push({ id: "device" + i, text: text, card: card,
+                ? shortId(c.serial) + (c.verification === "verified" ? " · verified" : c.verification === "different" ? " · different wallet" : " · verify on first use")
+                : (nm ? nm + " · " : "") + "card " + shortId(c.id)
+            out.push({ id: "device" + i, tag: tag, text: text, card: card,
                        actions: card ? [{ id: "admin", label: "Card administration…", enabled: !root.working }] : [] })
             if (card && card.trustedByPerson === true)
                 out.push({ id: trusted++ ? "trust" + trusted : "trust", text: "You trusted this card although Keycard did not certify it.",
@@ -196,7 +238,7 @@ Item {
                 RowLayout {
                     spacing: Theme.spacing.tiny
                     LogosText { text: "Keycard"; color: Theme.palette.text; font.pixelSize: 28; font.weight: Theme.typography.weightBold }
-                    LogosInfoButton { objectName: "keycardWalletInfo"; title: "One wallet per seed"; Accessible.name: "Help: One wallet per seed"; text: "Wallets are identified by a hash of the full master public key. Cards holding the same seed share one wallet, across readers and USB Shells. A different recovery passphrase creates a different wallet. Identify an older Shell wallet once and confirm its public-key requests to link its saved accounts. Previous wallet and account names are retained. A Shell connection means USB is present, not that this seed is inside. Any connected Shell can be used. The first use of each USB connection asks you to confirm the master public key. Subsequent signatures reuse that verification until the Shell disconnects or the app restarts. Use Verify wallet… on the wallet to request a fresh check at any time. Every returned signature is checked against the selected account. If the card has a different seed, the result is rejected; insert the correct card and retry. Names are saved on this computer." }
+                    LogosInfoButton { objectName: "keycardWalletInfo"; title: "One wallet per seed"; Accessible.name: "Help: One wallet per seed"; text: "Wallets are identified by a hash of the full master public key. Cards holding the same seed share one wallet, across readers and USB Shells. A different recovery passphrase creates a different wallet. A Shell connection means USB is present, not that this seed is readable: the app cannot see which wallet is inside until you approve an Identify request on the Shell screen. Until then the Shell shows only as a notification and a yellow header chip, and no wallet card changes. Identify confirms the master public key on the device; the card then folds into its wallet (keeping saved account names), or opens as a new unknown wallet. That identification is reused for signing until the Shell disconnects or the app restarts. Every returned signature is checked against the selected account; a different seed is rejected. Names are saved on this computer." }
                 }
                 LogosText { text: "Wallets and card administration"; color: Theme.palette.textSecondary; font.pixelSize: Theme.typography.secondaryText }
             }
@@ -208,7 +250,9 @@ Item {
                 // chip while starting, or when nothing is connected.
                 LogosBadge { objectName: "connectionStatus"; visible: !root.ready || (root.cards.length === 0 && root.shellDevices.length === 0); text: root.connLabel; color: root.connColor }
                 LogosBadge { objectName: "connectionStatusReader"; visible: root.ready && root.cards.length > 0; text: "Card via reader"; color: Theme.palette.success }
-                LogosBadge { objectName: "connectionStatusShell"; visible: root.ready && root.shellDevices.length > 0; text: "Shell via USB"; color: Theme.palette.success }
+                // Yellow while the Shell's card is not identified yet (we cannot see its seed until the
+                // person approves an Identify request on the device); green once identified.
+                LogosBadge { objectName: "connectionStatusShell"; visible: root.ready && root.shellDevices.length > 0; text: "Shell via USB"; color: root.anyShellUnidentified ? Theme.palette.warning : Theme.palette.success }
             }
             LogosIconButton { objectName: "refreshButton"; iconSource: root.iconRefresh; enabled: root.ready && !root.working; onClicked: root.backend.refresh() }
         }
@@ -257,21 +301,82 @@ Item {
             }
             LogosButton { objectName: "reviewUnverified"; visible: root.unsigned.length > 0; text: "Review unverified Keycard…"; onClicked: trustSheet.open() }
             LogosText { objectName: "keycardNotice"; visible: text !== ""; Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText; text: root.ready ? root.backend.noticeText : "" }
+            // A connected Shell whose card is not identified yet: a dismissible notification, styled
+            // apart from wallet cards (warning-tinted, not a card background) so it never reads as a
+            // wallet. Nothing on the wallet list changes until the person sends Identify and approves
+            // the request on the Shell screen; it then folds into its wallet, or opens an unknown one.
+            Repeater {
+                objectName: "shellIdentifyRepeater"
+                model: root.pendingShells
+                delegate: Rectangle {
+                    id: shellNote
+                    required property var modelData
+                    // Held from the moment Identify is pressed until the job ends, so the card keeps
+                    // its working state across the Shell's several approvals instead of resetting
+                    // after the first one.
+                    readonly property bool submitting: root.identifyingSerial === shellNote.modelData.serial
+                    Layout.fillWidth: true
+                    radius: 10
+                    color: Qt.rgba(Theme.palette.warning.r, Theme.palette.warning.g, Theme.palette.warning.b, 0.08)
+                    border.width: 1
+                    border.color: Qt.rgba(Theme.palette.warning.r, Theme.palette.warning.g, Theme.palette.warning.b, 0.45)
+                    implicitHeight: noteCol.implicitHeight + 2 * Theme.spacing.medium
+                    RowLayout {
+                        id: noteRow
+                        anchors.fill: parent; anchors.margins: Theme.spacing.medium
+                        spacing: Theme.spacing.small
+                        Rectangle { Layout.alignment: Qt.AlignTop; Layout.topMargin: 5; implicitWidth: 8; implicitHeight: 8; radius: 4; color: Theme.palette.warning }
+                        ColumnLayout {
+                            id: noteCol
+                            Layout.fillWidth: true
+                            spacing: Theme.spacing.tiny
+                            RowLayout {
+                                spacing: Theme.spacing.tiny
+                                LogosText { text: "Shell connected"; font.weight: Theme.typography.weightBold; color: Theme.palette.text }
+                                LogosText { text: "· " + root.shortId(shellNote.modelData.serial); color: Theme.palette.textSecondary; font.pixelSize: Theme.typography.secondaryText }
+                            }
+                            LogosText {
+                                Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.textSecondary
+                                font.pixelSize: Theme.typography.secondaryText
+                                text: shellNote.submitting
+                                    ? "Keep approving on your Shell screen until it stops asking. It confirms the wallet key, then checks each saved account, so it may ask several times."
+                                    : "The card inside can be identified only after you approve on the Shell screen. The Shell asks for the wallet key and then checks each saved account, so expect more than one approval. Send it with Identify."
+                            }
+                            RowLayout {
+                                Layout.topMargin: Theme.spacing.tiny
+                                spacing: Theme.spacing.small
+                                LogosButton {
+                                    objectName: "shellIdentifyButton"
+                                    text: shellNote.submitting ? "Approve on Shell…" : "Identify"
+                                    variant: LogosButton.Variant.Primary
+                                    enabled: !shellNote.submitting && !root.working
+                                    onClicked: { root.identifyingSerial = shellNote.modelData.serial; logos.watch(root.backend.identifyWallet(shellNote.modelData.serial), function(ok) { if (!ok) root.identifyingSerial = "" }) }
+                                }
+                                LogosButton {
+                                    objectName: "shellIdentifyDismiss"
+                                    text: "Dismiss"; enabled: !shellNote.submitting && !root.working
+                                    onClicked: { var dd = root.dismissedShells; dd[shellNote.modelData.serial] = true; root.dismissedShells = dd }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             // Wallets: a keypair, identified by its master key. Same key on any card/Shell = one block.
             Repeater { objectName: "cardGroupRepeater"; model: root.identifiedWallets; delegate: walletDelegate }
-            // Devices connected but whose wallet is not known yet: kept apart so a device is not read
-            // as a wallet. Identify a Shell (one tap) to fold it into its wallet.
+            // A keyless card (no keys loaded): kept apart so a device is not read as a wallet.
+            // Connected Shells are handled by the notification above, not here.
             LogosText {
-                visible: root.ready && root.unidentified.length > 0
+                visible: root.ready && root.unidentifiedCards.length > 0
                 Layout.fillWidth: true; Layout.topMargin: Theme.spacing.medium
                 text: "Not identified yet"; font.pixelSize: Theme.typography.subtitleText; font.weight: Theme.typography.weightBold; color: Theme.palette.text
             }
             LogosText {
-                visible: root.ready && root.unidentified.length > 0
+                visible: root.ready && root.unidentifiedCards.length > 0
                 Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.textSecondary
-                text: "A connected Keycard or Shell whose wallet is not known yet. Identify it to link it to its wallet; a card with no keys loaded has no wallet to show."
+                text: "A connected Keycard whose wallet is not known yet. A card with no keys loaded has no wallet to show."
             }
-            Repeater { objectName: "unidentifiedRepeater"; model: root.unidentified; delegate: walletDelegate }
+            Repeater { objectName: "unidentifiedRepeater"; model: root.unidentifiedCards; delegate: walletDelegate }
             Component {
                 id: walletDelegate
                 Accounts.WalletCard {
@@ -300,7 +405,6 @@ Item {
                         if (id === "add") root.openAdd(group.g)
                         else if (id === "unlock") root.unlockInSigner()
                         else if (id === "rename") { root.selectWallet(group.g); renameWalletSheet.open() }
-                        else if (id === "verify") { verifySheet.walletId = group.g.id; root.selectWallet(group.g); verifySheet.open() }
                         else if (id === "forget") { forgetSheet.cardId = group.g.id; forgetSheet.cardName = root.groupName(group.g); forgetSheet.open() }
                     }
                     onStripAction: function (i, id) {
@@ -565,47 +669,6 @@ Item {
                 LogosButton { text: "Close"; enabled: !root.working; onClicked: identifySheet.close() }
                 Item { Layout.fillWidth: true }
                 LogosButton { objectName: "identifyWalletButton"; text: "Identify wallet"; enabled: root.connected && !root.working; onClicked: logos.watch(root.backend.identifyWallet(root.connection.serial), function(ok) {}) }
-            }
-        }
-    }
-    LogosDialog {
-        id: verifySheet; objectName: "verifyWalletDialog"; title: "Verify wallet"
-        property string walletId: ""
-        property bool started: false
-        property bool submitting: false
-        property string errorText: ""
-        anchors.centerIn: parent; width: Math.min(parent.width - 40, 540)
-        closePolicy: root.working || submitting ? Popup.NoAutoClose : Popup.CloseOnEscape
-        onOpened: {
-            started = false; errorText = ""
-            var index = root.shellDevices.findIndex(function(d) { return root.connection && d.serial === root.connection.serial })
-            verifyDevice.currentIndex = Math.max(0, index)
-        }
-        contentItem: ColumnLayout {
-            LogosText { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Choose a Shell and confirm the master public-key request on its screen. This replaces its cached verification and checks that the inserted card holds this wallet. Your accounts and names stay unchanged." }
-            LogosComboBox {
-                id: verifyDevice; objectName: "verifyWalletDevice"; Layout.fillWidth: true
-                model: root.shellDevices.map(function(d) { return "Shell · " + root.shortId(d.serial) })
-                enabled: !root.working && !verifySheet.submitting
-            }
-            LogosText {
-                objectName: "verifyWalletResult"; Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText
-                text: verifySheet.errorText || (verifySheet.started ? (root.working || verifySheet.submitting ? "Confirm the public-key request on your Shell…" : root.exporting.state === "done" ? "Wallet verified for this USB connection." : root.exporting.error || "") : "")
-            }
-            RowLayout {
-                LogosButton { text: "Close"; enabled: !root.working && !verifySheet.submitting; onClicked: verifySheet.close() }
-                Item { Layout.fillWidth: true }
-                LogosButton {
-                    objectName: "verifyWalletButton"; text: "Verify wallet"
-                    enabled: !root.working && !verifySheet.submitting && verifyDevice.currentIndex >= 0 && verifyDevice.currentIndex < root.shellDevices.length
-                    onClicked: {
-                        verifySheet.started = true; verifySheet.submitting = true; verifySheet.errorText = ""
-                        logos.watch(root.backend.verifyWallet(verifySheet.walletId, root.shellDevices[verifyDevice.currentIndex].serial), function(ok) {
-                            verifySheet.submitting = false
-                            if (!ok) verifySheet.errorText = root.backend.lastError
-                        })
-                    }
-                }
             }
         }
     }

@@ -204,6 +204,24 @@ Frame {
                     anchors.leftMargin: Theme.spacing.medium
                     anchors.rightMargin: Theme.spacing.small
                     spacing: Theme.spacing.small
+                    // A device strip leads with a green tag (e.g. "Shell USB", "Card reader") so a
+                    // live connection reads at a glance; the detail that follows stays secondary.
+                    readonly property string stripTag: Roster.text(strip.modelData && strip.modelData.tag)
+                    LogosText {
+                        objectName: strip.prefix + "Tag"
+                        visible: stripRow.stripTag.length > 0
+                        text: stripRow.stripTag
+                        textFormat: Text.PlainText
+                        color: Theme.palette.success
+                        font.weight: Theme.typography.weightBold
+                        font.pixelSize: Theme.typography.secondaryText
+                    }
+                    LogosText {
+                        visible: stripRow.stripTag.length > 0
+                        text: "·"
+                        color: Theme.palette.textSecondary
+                        font.pixelSize: Theme.typography.secondaryText
+                    }
                     LogosText {
                         objectName: strip.prefix + "Text"
                         Layout.fillWidth: true
