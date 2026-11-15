@@ -194,7 +194,7 @@ ColumnLayout {
         "set_name", "set_ndef", "pair", "change_pairing_password", "unpair",
         "generate_key", "remove_key", "factory_reset",
         "initialize", "read_data", "write_data",
-        "verify_phrase", "load_phrase"]
+        "verify_phrase", "load_phrase", "generate_phrase"]
     onActionChanged: {
         clearSecrets(); data.text = ""; message = ""
         if (action === "") return
@@ -299,7 +299,7 @@ ColumnLayout {
                 }
                 RowLayout {
                     Layout.fillWidth: true; spacing: Theme.spacing.tiny
-                    LogosText { Layout.alignment: Qt.AlignVCenter; wrapMode: Text.WrapAnywhere; textFormat: Text.PlainText; color: Theme.palette.textSecondary; text: admin.selected ? "Card fingerprint:  " + admin.selected.adminId.split(":").pop() : "" }
+                    LogosText { Layout.alignment: Qt.AlignVCenter; wrapMode: Text.WrapAnywhere; textFormat: Text.PlainText; color: Theme.palette.textSecondary; text: admin.selected ? "Card fingerprint:  " + admin.shortHex(admin.selected.adminId.split(":").pop()) : "" }
                     LogosCopyButton { Layout.alignment: Qt.AlignVCenter; visible: !!admin.selected; value: admin.selected ? admin.selected.adminId.split(":").pop() : ""; feedbackText: "Card fingerprint copied"; size: 18; iconSize: 12 }
                     Item { Layout.fillWidth: true }
                 }
