@@ -18,6 +18,7 @@ Item {
     readonly property url iconRefresh: Qt.resolvedUrl("assets/refresh.svg")
     readonly property url iconEdit: Qt.resolvedUrl("assets/edit.svg")
     readonly property url iconTrash: Qt.resolvedUrl("assets/trash.svg")
+    readonly property url iconLock: Qt.resolvedUrl("assets/lock.svg")
     Component.onCompleted: ready = backend !== null && logos.isViewModuleReady("keycard_ui")
     Timer { running: !root.ready && !root.startupStalled; interval: 15000; onTriggered: root.startupStalled = true }
     Connections {
@@ -403,6 +404,7 @@ Item {
                     walletIdFull: (g.id || "").split(":").pop()
                     editIcon: root.iconEdit
                     trashIcon: root.iconTrash
+                    lockIcon: root.iconLock
                     emptyText: root.hasAccounts(g) ? "No accounts yet." : ""
                     lines: root.aliasesOf(g).length ? ["Also named: " + root.aliasesOf(g).join(" · ")] : []
                     strips: root.stripsOf(g)

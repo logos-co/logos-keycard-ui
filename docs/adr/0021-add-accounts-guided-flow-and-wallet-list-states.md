@@ -59,7 +59,15 @@ Presentation pass (from on-hardware review):
   longer repeats "Locked"; off the reader it reads "Connect this wallet's Keycard, then unlock
   it in the Signer app…", and the control becomes a disabled **"Connect card to unlock"**.
   With the card present it is an active **Unlock** and the copy explains the Signer asks for
-  this card's PIN. Unlock is gated on `g.connected`, so a dead button is never offered.
+  this card's PIN. Unlock is gated on `g.connected`, so a dead button is never offered. A
+  **lock glyph** sits before the name so the state reads at a glance.
+- **No wallet identifier while locked, deliberately.** The title stays the generic "Locked
+  wallet" rather than an id-bearing name. The only identity that matches the unlocked card is
+  the **master fingerprint** (the "Wallet ID"), and it is computed from the wallet's accounts,
+  which are sealed while locked (verified: it exists in no plaintext store). The keyUid *is*
+  available, but it is a different value from the fingerprint, so a keyUid-based name would
+  imply a link to the unlocked wallet that it cannot honour. Showing nothing identifying is the
+  honest choice; the real id appears as the Wallet ID line once unlocked.
 
 ## Consequences
 

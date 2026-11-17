@@ -20,6 +20,8 @@ Frame {
     // Icons for the inline edit (rename) and trash (forget) controls beside the title.
     property url editIcon: ""
     property url trashIcon: ""
+    // A lock glyph shown before the name while the wallet is locked.
+    property url lockIcon: ""
     // Beside the actions at the top, as "Unlocked".
     property string stateText: ""
     // Who holds it, or how it unlocks.
@@ -87,6 +89,15 @@ Frame {
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 4
+                    // A lock glyph before the name on a locked wallet, so its state reads at a glance.
+                    LogosIcon {
+                        objectName: card.namePrefix + "LockIcon"
+                        visible: card.locked && card.lockIcon != ""
+                        Layout.alignment: Qt.AlignVCenter
+                        width: 16; height: 16
+                        source: card.lockIcon
+                        color: Theme.palette.textSecondary
+                    }
                     LogosText {
                         objectName: card.namePrefix + "Title"
                         Layout.fillWidth: false
