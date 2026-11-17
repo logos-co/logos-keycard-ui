@@ -359,6 +359,7 @@ ColumnLayout {
             objectName: "cardFlowDialog"
             backend: admin.backend
             onFinished: function (ok) {
+                var was = admin.action
                 admin.action = ""
                 // Re-point selected at the refreshed card so attempts/state are current for the next op.
                 if (admin.selected) {
@@ -367,7 +368,10 @@ ColumnLayout {
                         if (c.reader === admin.selected.reader && c.adminId === admin.selected.adminId) { admin.selected = c; break }
                     }
                 }
-                admin.readCardName()
+                // Only Update name changes the on-card name; re-reading it after any other op just
+                // flashes "Checking…" in the title. A card-identity change (reset/erase) is handled
+                // by the `changed` path, which re-selects and re-reads on its own.
+                if (ok && was === "set_name") admin.readCardName()
             }
         }
         LogosDialog {
