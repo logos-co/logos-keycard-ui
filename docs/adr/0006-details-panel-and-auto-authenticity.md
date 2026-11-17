@@ -1,9 +1,14 @@
 # ADR-F: The Details panel, card facts at a glance with auto-verified authenticity
 
-- Status: Accepted
+- Status: Accepted; presentation partially superseded by ADR-0015 and ADR-0022
 - Date: 2026-11-13
 - Scope: `keycard_ui` (UI only; no backend or `.rep` change)
 - Issue: #2 (refines ADR-C)
+
+> **Superseded note:** the labeled "Details panel" presentation evolved. ADR-0015 restyled it, and
+> ADR-0022 promotes the card **name to the panel title** (dropping the "Card name:" row) and moves
+> "More details" to a link at the end of the card. The decisions that still hold: card facts shown
+> at a glance, and authenticity verified automatically (no PIN).
 
 ## Context
 

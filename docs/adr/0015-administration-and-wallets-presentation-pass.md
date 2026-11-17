@@ -1,9 +1,14 @@
 # ADR-O: Administration and Wallets presentation pass (card name, icons, account cards, primary CTA)
 
-- Status: Accepted
+- Status: Accepted; Administration details partially superseded by ADR-0022
 - Date: 2026-11-14
 - Scope: `keycard_ui` (UI only; QML + two icon assets; no backend or `.rep` change)
 - Issue: #2 (refines ADR-K and ADR-N)
+
+> **Superseded note:** the Administration detail-panel parts of this pass are overridden by
+> ADR-0022: the on-card name is now the panel **title** (not a "Card name:  Checking…" row),
+> "More details" is a **link** at the end of the card, and the name is no longer re-read on every
+> modal close. The Wallets parts of this pass still stand (as refined by ADR-0021).
 
 ## Context
 

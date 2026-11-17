@@ -1,9 +1,14 @@
 # ADR-D: Per-action interaction in a modal over the inline panel
 
-- Status: Accepted
+- Status: Accepted; largely superseded by ADR-0018 / ADR-0020 (guided flows)
 - Date: 2026-11-13
 - Scope: `keycard_ui` (UI only; no backend or `.rep` change)
 - Issue: #2 (amends ADR-A's inline per-operation form)
+
+> **Superseded note:** the single-form per-action modal here was replaced for almost every
+> operation by the guided, one-input-per-screen `CardFlow` (ADR-0018, ADR-0020). The single-form
+> `opDialog` now survives only as a fallback for operations not routed through `CardFlow`. The
+> "operation runs in a centred modal, panel scrolls" principle still holds.
 
 ## Context
 
