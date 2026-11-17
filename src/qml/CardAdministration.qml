@@ -280,9 +280,17 @@ ColumnLayout {
                 LogosCopyButton { id: emptyGetReaderCopy; value: "https://keycard.tech/products/keycard-reader-for-desktop"; feedbackText: "URL copied"; size: 24; iconSize: 14 }
             }
         }
+        // Card name as the section title, above the details card (on the panel background).
+        LogosText {
+            visible: !!admin.selected && !admin.changed
+            Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small
+            wrapMode: Text.WrapAnywhere; textFormat: Text.PlainText
+            color: Theme.palette.text; font.weight: Theme.typography.weightBold; font.pixelSize: Theme.typography.subtitleText
+            text: admin.selected ? (admin.onCardName || "Keycard") : ""
+        }
         Rectangle {
             visible: !!admin.selected && !admin.changed
-            Layout.topMargin: Theme.spacing.small
+            Layout.topMargin: Theme.spacing.tiny
             Layout.fillWidth: true
             Layout.preferredHeight: detailsCol.implicitHeight + 2 * Theme.spacing.small
             radius: Theme.spacing.radiusLarge
@@ -292,11 +300,6 @@ ColumnLayout {
                 id: detailsCol
                 anchors { left: parent.left; right: parent.right; top: parent.top; margins: Theme.spacing.small }
                 spacing: Theme.spacing.tiny
-                RowLayout {
-                    Layout.fillWidth: true; spacing: Theme.spacing.small
-                    LogosText { Layout.fillWidth: true; Layout.alignment: Qt.AlignVCenter; wrapMode: Text.WrapAnywhere; textFormat: Text.PlainText; color: Theme.palette.text; text: "Card name:  " + (admin.selected ? (admin.onCardName || "empty") : "") }
-                    LogosButton { objectName: "statusDetails"; text: "More details"; enabled: !admin.busy; onClicked: admin.runStatusOp("status") }
-                }
                 RowLayout {
                     Layout.fillWidth: true; spacing: Theme.spacing.tiny
                     LogosText { Layout.alignment: Qt.AlignVCenter; wrapMode: Text.WrapAnywhere; textFormat: Text.PlainText; color: Theme.palette.textSecondary; text: admin.selected ? "Card fingerprint:  " + admin.shortHex(admin.selected.adminId.split(":").pop()) : "" }
@@ -313,6 +316,8 @@ ColumnLayout {
                 LogosText { Layout.fillWidth: true; textFormat: Text.PlainText; color: Theme.palette.textSecondary; text: admin.selected ? "Version:  " + (admin.selected.initialized ? "Keycard " + admin.selected.version : "Not set up") : "" }
                 LogosText { Layout.fillWidth: true; textFormat: Text.PlainText; color: Theme.palette.textSecondary; text: admin.selected ? "Private keys:  " + (admin.selected.keyUid ? "present" : "not loaded") : "" }
                 LogosText { Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText; color: Theme.palette.textSecondary; text: "Authenticity:  " + (admin.authenticity || "—") }
+                // More details as a link at the end of the card.
+                LogosLink { objectName: "statusDetails"; Layout.topMargin: Theme.spacing.tiny; enabled: !admin.busy; text: "More details"; onActivated: admin.runStatusOp("status") }
             }
         }
         Repeater {
