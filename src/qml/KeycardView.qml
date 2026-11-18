@@ -152,7 +152,7 @@ Item {
         if (g.id.indexOf("seed:") === 0)
             return hasAccounts(g) ? (g.name || "Keycard wallet " + (fingerprintOf(g) || shortId(g.id)))
                                   : g.locked === true ? "Locked wallet" : "Unknown wallet"
-        return g.name || (g.legacy ? "Unidentified Keycard" : g.transport === "shell" ? "Keycard Shell · not identified yet" : "Keycard · not identified yet")
+        return g.name || (g.legacy ? "Unidentified Keycard" : g.transport === "shell" ? "Keycard Shell · not identified yet" : cardNoSeed(g) ? "Keycard · no wallet yet" : "Keycard · not identified yet")
     }
     // A card's rows, as the kit takes them: an EVM address, or a Bitcoin first receiving address.
     function rowsOf(g) {
@@ -176,17 +176,18 @@ Item {
     // All of these act on the whole wallet, so they sit together beside its name.
     function walletActions(g) {
         var unknown = isUnknownWallet(g)
-        // Withhold Add accounts when a blocked card can't be unlocked, and on an unidentified card
-        // until its state is read (so it never flashes before we know the card isn't blocked). A
-        // wallet with accounts is already usable, so it does not wait. Card administration still
-        // rides on the connection strip, to unblock or reset.
-        var hideAdd = cardBlockedFor(g) || (unknown && !cardStateKnown(g))
+        // Withhold Add accounts when: the card is blocked (can't unlock); the card holds no seed
+        // (nothing to derive — set up a phrase first); or a card with no saved accounts whose state
+        // isn't read yet (so it never flashes before we know). A wallet that already has accounts is
+        // usable and does not wait. Card administration stays on the connection strip regardless.
+        var hideAdd = cardBlockedFor(g) || cardNoSeed(g) || (!hasAccounts(g) && !cardStateKnown(g))
         var add = hideAdd
             ? []
             : [{ id: "add", label: "Add accounts", enabled: g.connected && !root.working && !g.legacy && g.locked !== true }]
-        // An unknown wallet (connected card, no accounts yet) has nothing to rename or forget.
-        return unknown ? add
-            : add.concat([{ id: "rename", label: "Rename…" }])
+        // An unknown wallet, or a card with no wallet yet (no seed), has nothing to rename or forget:
+        // only Card administration (on the connection strip), where a seed is created or imported.
+        if (unknown || cardNoSeed(g)) return add
+        return add.concat([{ id: "rename", label: "Rename…" }])
                  .concat([{ id: "forget", label: "Forget wallet…" }])
     }
     function aliasesOf(g) { return (g.aliases || []).filter(function(n) { return n !== g.name }) }
@@ -249,6 +250,22 @@ Item {
     }
     // An unidentified card (connected, no accounts yet) or a legacy/pending entry.
     function isUnknownWallet(g) { return g.legacy || g.pending || (g.id.indexOf("seed:") === 0 && !hasAccounts(g)) }
+    // A connected reader card that holds no seed (a PIN is set but no keys loaded). Such a card has
+    // no wallet yet: Add accounts has nothing to derive, and there is nothing to identify. The way
+    // forward is to create or import a recovery phrase in Card administration. Returns false when a
+    // seed is present on some connected card, or when there is no reader card to judge (e.g. a Shell).
+    function cardNoSeed(g) {
+        var ds = connectedDevices(g)
+        var sawReaderCard = false
+        for (var i = 0; i < ds.length; i++) {
+            if (ds[i].transport === "shell") continue
+            var card = cardFor(ds[i])
+            if (!card) continue
+            sawReaderCard = true
+            if (card.keyUid) return false
+        }
+        return sawReaderCard
+    }
     // Each device in use, a card trusted without Keycard's certificate, and an older Shell wallet.
     function stripsOf(g) {
         var out = [], trusted = 0
@@ -417,16 +434,6 @@ Item {
             // as a wallet, and placed above the wallet list because it is the card in hand needing
             // action. Connected Shells are handled by the notification above, not here. Hidden once the
             // card is removed (its copy is about a connected Keycard).
-            LogosText {
-                visible: root.visibleUnidentifiedCards.length > 0
-                Layout.fillWidth: true
-                text: "Not identified yet"; font.pixelSize: Theme.typography.subtitleText; font.weight: Theme.typography.weightBold; color: Theme.palette.text
-            }
-            LogosText {
-                visible: root.visibleUnidentifiedCards.length > 0
-                Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.textSecondary
-                text: "A connected Keycard whose wallet is not known yet. A card with no keys loaded has no wallet to show."
-            }
             Repeater { objectName: "unidentifiedRepeater"; model: root.visibleUnidentifiedCards; delegate: walletDelegate }
             // Wallets: a keypair, identified by its master key. Same key on any card/Shell = one block.
             Repeater { objectName: "cardGroupRepeater"; model: root.visibleIdentified; delegate: walletDelegate }
@@ -450,7 +457,9 @@ Item {
                         ? ["This card is blocked. Open Card administration to unblock or reset it."]
                         : (root.isUnknownWallet(g) && !root.cardStateKnown(g)
                             ? ["Reading card…"]
-                            : (root.aliasesOf(g).length ? ["Also named: " + root.aliasesOf(g).join(" · ")] : []))
+                            : (root.cardNoSeed(g)
+                                ? ["This card has no wallet yet. Create or import a recovery phrase in Card administration."]
+                                : (root.aliasesOf(g).length ? ["Also named: " + root.aliasesOf(g).join(" · ")] : [])))
                     strips: root.stripsOf(g)
                     locked: g.locked === true
                     // Unlocking goes through the Signer, which asks for THIS card's PIN — so it is

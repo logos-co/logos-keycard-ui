@@ -43,23 +43,31 @@ ColumnLayout {
     property string onCardName: ""
     property int localPinRetries: -1               // this panel's own refresh; -1 = not read here
     property int localPukRetries: -1
+    property bool localRead: false                 // this panel's status read has returned for `selected`
     readonly property var cachedState: (selected && selected.adminId && cardStateCache[selected.adminId]) ? cardStateCache[selected.adminId] : null
     // Local read wins when present (freshest, e.g. right after an unblock); else the insert-time
-    // cache; else unknown (-1).
+    // cache; else unknown (-1). An uninitialized card has no PIN, so -1 is normal and NOT "blocked".
     readonly property int cardPinRetries: localPinRetries >= 0 ? localPinRetries : (cachedState ? cachedState.pin : -1)
     readonly property int cardPukRetries: localPukRetries >= 0 ? localPukRetries : (cachedState ? cachedState.puk : -1)
-    // Whether the card's state is known yet. The action list stays hidden until it is, so the user
-    // never sees the wrong set first.
-    readonly property bool stateKnown: !selected || cardPinRetries >= 0 || cardPukRetries >= 0
+    // Only an initialized, paired card can be blocked, so only it needs the status read to be
+    // classified. An uninitialized (e.g. just factory-reset) or unpaired card is classified from
+    // cards() alone — don't make it wait on retry counts it will never have.
+    readonly property bool needsStatusRead: !!selected && selected.initialized && !(selected.secureChannel === 1 && !selected.paired)
+    readonly property bool cacheHasState: !!(selected && selected.adminId && cardStateCache.hasOwnProperty(selected.adminId))
+    // The card's state is known once its status read has returned (this panel's or the insert-time
+    // cache), or when it needs no read to classify. The action list waits on this, so the user never
+    // sees the wrong set first — and an uninitialized card is not stuck on "Reading card…".
+    readonly property bool stateKnown: !selected || !needsStatusRead || localRead || cacheHasState
     function readCardName() {
-        if (!selected) { onCardName = ""; localPinRetries = -1; localPukRetries = -1; return }
-        onCardName = "Checking…"; localPinRetries = -1; localPukRetries = -1
+        if (!selected) { onCardName = ""; localPinRetries = -1; localPukRetries = -1; localRead = false; return }
+        onCardName = "Checking…"; localPinRetries = -1; localPukRetries = -1; localRead = false
         var p = {action:"status", reader:selected.reader, cardId:selected.adminId, keyUid:selected.keyUid || ""}
         logos.watch(backend.administer(JSON.stringify(p)), function(raw) {
             var r; try { r = JSON.parse(raw) } catch(e) { r = {} }
             onCardName = (r && r.ok && r.cardName) ? r.cardName : ""
             localPinRetries = (r && r.ok && typeof r.pinRetries === "number") ? r.pinRetries : -1
             localPukRetries = (r && r.ok && typeof r.pukRetries === "number") ? r.pukRetries : -1
+            localRead = true
         })
     }
     // Blocked state, from the authoritative retry counts (insert-time cache, or this panel's read).
@@ -440,7 +448,7 @@ ColumnLayout {
                         id: formCol
                         width: form.availableWidth; spacing: Theme.spacing.small
                         enabled: !admin.busy && !admin.changed && !!admin.selected
-                LogosText { visible: admin.action === "factory_reset" || admin.action === "remove_key"; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.error; text: admin.action === "factory_reset" ? "Factory reset erases this card's keys, PIN, PUK, pairings and card metadata. It requires no PIN. You need a recovery backup to restore access to funds. Saved wallet names and accounts on this computer are retained." : "Erase the recovery keys from this card. You need a recovery backup to restore access to funds. PIN, PUK and pairings remain. Saved accounts on this computer are retained." }
+                LogosText { visible: admin.action === "factory_reset" || admin.action === "remove_key"; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.error; text: admin.action === "factory_reset" ? "Factory reset erases this card's keys, PIN, PUK, pairings and card metadata. It requires no PIN. You need your recovery phrase to restore access to funds. Saved wallet names and accounts on this computer are retained." : "Erase the recovery keys from this card. You need your recovery phrase to restore access to funds. PIN, PUK and pairings remain. Saved accounts on this computer are retained." }
                 LogosText { visible: admin.action === "generate_key"; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.error; text: "Generates keys inside an empty card with NO recovery phrase. If this card is lost or reset, its wallet cannot be recovered. Use Create recovery phrase for a recoverable wallet." }
                 LogosText { visible: admin.loadsKeys && admin.holdsKeys; Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "This card already holds keys. Erase keys explicitly before loading a different wallet."; color: Theme.palette.error }
                 LogosTextField { id: pin; objectName: "adminPin"; visible: admin.needsPin; Layout.fillWidth: true; placeholderText: "Current PIN (6 digits)"; echoMode: TextInput.Password; validator: RegularExpressionValidator { regularExpression: /[0-9]{0,6}/ } }
