@@ -176,10 +176,16 @@ Item {
     function hasAccounts(g) { return (((g && g.accounts) || []).length) > 0 }
     // All of these act on the whole wallet, so they sit together beside its name.
     function walletActions(g) {
-        var add = [{ id: "add", label: "Add accounts", enabled: g.connected && !root.working && !g.legacy && g.locked !== true }]
-        // An unknown wallet (connected card, no accounts yet) has nothing to rename or forget: only
-        // Add accounts (and Card administration, which rides on the connection strip).
-        var unknown = g.legacy || g.pending || (g.id.indexOf("seed:") === 0 && !hasAccounts(g))
+        var unknown = isUnknownWallet(g)
+        // Withhold Add accounts when a blocked card can't be unlocked, and on an unidentified card
+        // until its state is read (so it never flashes before we know the card isn't blocked). A
+        // wallet with accounts is already usable, so it does not wait. Card administration still
+        // rides on the connection strip, to unblock or reset.
+        var hideAdd = cardBlockedFor(g) || (unknown && !cardStateKnown(g))
+        var add = hideAdd
+            ? []
+            : [{ id: "add", label: "Add accounts", enabled: g.connected && !root.working && !g.legacy && g.locked !== true }]
+        // An unknown wallet (connected card, no accounts yet) has nothing to rename or forget.
         return unknown ? add
             : add.concat([{ id: "rename", label: "Rename…" }])
                  .concat([{ id: "forget", label: "Forget wallet…" }])
@@ -190,6 +196,10 @@ Item {
     // so the transport line can show it (e.g. "Realify") without a tap. The pending guard keeps the
     // read that triggers a refresh from looping: it fires once per card, then serves from cache.
     property var cardNameCache: ({})
+    // Per-card PIN/PUK retry state, cached by adminId from the same no-PIN status read as the name
+    // (so no extra calls). { pin, puk }, each -1 when unknown. cards() reports a stale pinRetries
+    // and carries no pukRetries, so this status read is the only reliable blocked signal.
+    property var cardStateCache: ({})
     property var cardNamePending: ({})
     onCardsChanged: root.cards.forEach(function(c) { if (c && c.adminId) root.ensureCardName(c) })
     function ensureCardName(card) {
@@ -202,12 +212,44 @@ Item {
             delete cardNamePending[k]
             var r; try { r = JSON.parse(raw) } catch(e) { r = {} }
             var c = cardNameCache; c[k] = (r && r.ok && r.cardName) ? r.cardName : ""; cardNameCache = c
+            var s = cardStateCache
+            s[k] = { pin: (r && r.ok && typeof r.pinRetries === "number") ? r.pinRetries : -1,
+                     puk: (r && r.ok && typeof r.pukRetries === "number") ? r.pukRetries : -1 }
+            cardStateCache = s
         })
     }
     function cardNameFor(c) {
         var card = cardFor(c)
         return card && card.adminId && cardNameCache[card.adminId] ? cardNameCache[card.adminId] : ""
     }
+    // A connected card of this wallet is blocked (PIN or PUK exhausted) per the status cache. A
+    // blocked card cannot be unlocked, so Add accounts cannot work and is not offered.
+    function cardBlockedFor(g) {
+        var ds = connectedDevices(g)
+        for (var i = 0; i < ds.length; i++) {
+            if (ds[i].transport === "shell") continue
+            var card = cardFor(ds[i])
+            if (!card || !card.adminId) continue
+            var st = cardStateCache[card.adminId]
+            if (st && (st.pin === 0 || st.puk === 0)) return true
+        }
+        return false
+    }
+    // Whether the status read has landed for every connected (reader) card of this wallet. Add
+    // accounts is withheld on an unidentified card until this is true, so a blocked card never
+    // flashes the button on app start before its state is read.
+    function cardStateKnown(g) {
+        var ds = connectedDevices(g)
+        for (var i = 0; i < ds.length; i++) {
+            if (ds[i].transport === "shell") continue
+            var card = cardFor(ds[i])
+            if (!card || !card.adminId) continue
+            if (!cardStateCache.hasOwnProperty(card.adminId)) return false
+        }
+        return true
+    }
+    // An unidentified card (connected, no accounts yet) or a legacy/pending entry.
+    function isUnknownWallet(g) { return g.legacy || g.pending || (g.id.indexOf("seed:") === 0 && !hasAccounts(g)) }
     // Each device in use, a card trusted without Keycard's certificate, and an older Shell wallet.
     function stripsOf(g) {
         var out = [], trusted = 0
@@ -284,7 +326,7 @@ Item {
         }
     }
     CardAdministration {
-        id: adminSheet; backend: root.backend; cards: root.cards; cardGroups: root.cardGroups
+        id: adminSheet; backend: root.backend; cards: root.cards; cardGroups: root.cardGroups; cardStateCache: root.cardStateCache
         active: areaTabs.currentIndex === 1; visible: areaTabs.currentIndex === 1
         anchors { top: appHeader.bottom; left: parent.left; right: parent.right; bottom: parent.bottom
                   leftMargin: Theme.spacing.medium; rightMargin: Theme.spacing.medium; bottomMargin: Theme.spacing.medium; topMargin: Theme.spacing.large }
@@ -406,7 +448,11 @@ Item {
                     trashIcon: root.iconTrash
                     lockIcon: root.iconLock
                     emptyText: root.hasAccounts(g) ? "No accounts yet." : ""
-                    lines: root.aliasesOf(g).length ? ["Also named: " + root.aliasesOf(g).join(" · ")] : []
+                    lines: root.cardBlockedFor(g)
+                        ? ["This card is blocked. Open Card administration to unblock or reset it."]
+                        : (root.isUnknownWallet(g) && !root.cardStateKnown(g)
+                            ? ["Reading card…"]
+                            : (root.aliasesOf(g).length ? ["Also named: " + root.aliasesOf(g).join(" · ")] : []))
                     strips: root.stripsOf(g)
                     locked: g.locked === true
                     // Unlocking goes through the Signer, which asks for THIS card's PIN — so it is

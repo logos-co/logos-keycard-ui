@@ -33,18 +33,39 @@ ColumnLayout {
             authenticity = r.ok ? (r.genuine ? "Verified by Keycard" : "Not certified by Keycard") : "Could not verify"
         })
     }
-    // The name stored on the card itself (set via "Update card name"). Read with a status call,
-    // which needs no PIN, so it can be shown in the header; "" when the card carries no name.
+    // The card's PIN/PUK retry counts are the AUTHORITATIVE blocked signal: cards() carries a stale
+    // pinRetries and no pukRetries (see docs/keycard-state-action-map.md), so the block state can't
+    // be trusted from cards(). The counts are read with a no-PIN status call when the card is
+    // INSERTED (KeycardView does it and passes the cache in here), so by the time this tab opens the
+    // state is already known and the action list shows the right set from the first frame, with no
+    // "full list, then collapse" flash. This panel's own read only refreshes after an op.
+    property var cardStateCache: ({})              // adminId -> { pin, puk }, filled on card insert
     property string onCardName: ""
+    property int localPinRetries: -1               // this panel's own refresh; -1 = not read here
+    property int localPukRetries: -1
+    readonly property var cachedState: (selected && selected.adminId && cardStateCache[selected.adminId]) ? cardStateCache[selected.adminId] : null
+    // Local read wins when present (freshest, e.g. right after an unblock); else the insert-time
+    // cache; else unknown (-1).
+    readonly property int cardPinRetries: localPinRetries >= 0 ? localPinRetries : (cachedState ? cachedState.pin : -1)
+    readonly property int cardPukRetries: localPukRetries >= 0 ? localPukRetries : (cachedState ? cachedState.puk : -1)
+    // Whether the card's state is known yet. The action list stays hidden until it is, so the user
+    // never sees the wrong set first.
+    readonly property bool stateKnown: !selected || cardPinRetries >= 0 || cardPukRetries >= 0
     function readCardName() {
-        if (!selected) { onCardName = ""; return }
-        onCardName = "Checking…"
+        if (!selected) { onCardName = ""; localPinRetries = -1; localPukRetries = -1; return }
+        onCardName = "Checking…"; localPinRetries = -1; localPukRetries = -1
         var p = {action:"status", reader:selected.reader, cardId:selected.adminId, keyUid:selected.keyUid || ""}
         logos.watch(backend.administer(JSON.stringify(p)), function(raw) {
             var r; try { r = JSON.parse(raw) } catch(e) { r = {} }
             onCardName = (r && r.ok && r.cardName) ? r.cardName : ""
+            localPinRetries = (r && r.ok && typeof r.pinRetries === "number") ? r.pinRetries : -1
+            localPukRetries = (r && r.ok && typeof r.pukRetries === "number") ? r.pukRetries : -1
         })
     }
+    // Blocked state, from the authoritative retry counts (insert-time cache, or this panel's read).
+    readonly property bool blockedPin: cardPinRetries === 0
+    readonly property bool blockedPuk: cardPukRetries === 0
+    readonly property bool cardBlocked: !!selected && (blockedPin || blockedPuk)
     readonly property var usableCards: cards.filter(function(c) { return !!c.adminId })
     // A long hex id, shortened for display; the full value stays on the copy button.
     function shortHex(s) { return s && s.length > 16 ? s.slice(0, 8) + "…" + s.slice(-8) : (s || "") }
@@ -83,11 +104,14 @@ ColumnLayout {
         if (selected.secureChannel === 1 && !selected.paired) return [{id:"pair",label:"Pair this app"}]
 
         var hasKeys = !!selected.keyUid                      // Status hasKeyPair: a seed is present
-        var locked = selected.pinRetries === 0               // Status isBlockedPIN: PIN locked
         var canReset = (selected.capabilities & 16) !== 0
 
-        // PIN locked: recovery only. Everything that needs the current PIN is hidden.
-        if (locked) {
+        // PUK frozen (fully blocked): a factory reset is the only exit. Checked first because a
+        // PUK-frozen card is usually also PIN-locked, and unblock_pin cannot help without a PUK.
+        if (blockedPuk) return canReset ? [{id:"factory_reset",label:"Factory reset"}] : []
+        // PIN locked, PUK still has tries: unblock with the PUK, or reset. Everything that needs
+        // the current PIN is hidden.
+        if (blockedPin) {
             var r = [{id:"unblock_pin",label:"Unblock PIN"}]
             if (canReset) r.push({id:"factory_reset",label:"Factory reset"})
             return r
@@ -285,8 +309,11 @@ ColumnLayout {
             visible: !!admin.selected && !admin.changed
             Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small
             wrapMode: Text.WrapAnywhere; textFormat: Text.PlainText
-            color: Theme.palette.text; font.weight: Theme.typography.weightBold; font.pixelSize: Theme.typography.subtitleText
-            text: admin.selected ? (admin.onCardName || "Keycard") : ""
+            color: (admin.selected && !admin.onCardName) ? Theme.palette.textMuted : Theme.palette.text
+            font.weight: Theme.typography.weightBold; font.pixelSize: Theme.typography.subtitleText
+            // The on-card name, or a muted placeholder when the card carries none (don't default
+            // to "Keycard" as if that were its name).
+            text: admin.selected ? (admin.onCardName || "Name is empty") : ""
         }
         Rectangle {
             visible: !!admin.selected && !admin.changed
@@ -300,6 +327,17 @@ ColumnLayout {
                 id: detailsCol
                 anchors { left: parent.left; right: parent.right; top: parent.top; margins: Theme.spacing.small }
                 spacing: Theme.spacing.tiny
+                // Blocked card: a red flag at the top of the card data. The available actions (Unblock
+                // PIN / Factory reset only) carry the way out. cards() can't see a frozen PUK, so this
+                // rides on the authoritative status read.
+                LogosText {
+                    objectName: "cardBlockedFlag"
+                    visible: admin.cardBlocked
+                    Layout.fillWidth: true; Layout.bottomMargin: Theme.spacing.tiny
+                    textFormat: Text.PlainText; color: Theme.palette.error
+                    font.weight: Theme.typography.weightBold
+                    text: "This card is blocked"
+                }
                 RowLayout {
                     Layout.fillWidth: true; spacing: Theme.spacing.tiny
                     LogosText { Layout.alignment: Qt.AlignVCenter; wrapMode: Text.WrapAnywhere; textFormat: Text.PlainText; color: Theme.palette.textSecondary; text: admin.selected ? "Card fingerprint:  " + admin.shortHex(admin.selected.adminId.split(":").pop()) : "" }
@@ -320,13 +358,23 @@ ColumnLayout {
                 LogosLink { objectName: "statusDetails"; Layout.topMargin: Theme.spacing.tiny; enabled: !admin.busy; text: "More details"; onActivated: admin.runStatusOp("status") }
             }
         }
+        // Until the card's state is known, show a brief placeholder instead of the action list, so
+        // the user never sees the full set collapse to the blocked set. The state is usually already
+        // cached from card insertion, so this rarely shows.
+        LogosText {
+            objectName: "adminReadingCard"
+            visible: !!admin.selected && !admin.changed && !admin.stateKnown
+            Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small
+            textFormat: Text.PlainText; color: Theme.palette.textSecondary
+            text: "Reading card…"
+        }
         Repeater {
             model: admin.actionGroups
             delegate: ColumnLayout {
                 id: groupItem
                 required property var modelData
                 Layout.fillWidth: true; Layout.topMargin: Theme.spacing.small; spacing: Theme.spacing.small
-                visible: !!admin.selected && !admin.changed
+                visible: !!admin.selected && !admin.changed && admin.stateKnown
                 LogosText {
                     visible: !!groupItem.modelData.advanced
                     Layout.fillWidth: true
