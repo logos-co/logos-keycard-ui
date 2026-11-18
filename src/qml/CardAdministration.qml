@@ -108,8 +108,14 @@ ColumnLayout {
         if (!selected) return []
         // No PIN yet: the only thing you can do is set the card up.
         if (!selected.initialized) return [{id:"initialize",label:"Set up card"}]
-        // A 3.x card that isn't paired: pair before anything else is possible.
-        if (selected.secureChannel === 1 && !selected.paired) return [{id:"pair",label:"Pair this app"}]
+        // A 3.x card that isn't paired: pair before anything else — plus factory reset as the escape
+        // when you can't pair (e.g. the pairing password is lost). Factory reset needs no PIN or
+        // pairing, so it stays available here.
+        if (selected.secureChannel === 1 && !selected.paired) {
+            var up = [{id:"pair",label:"Pair this app"}]
+            if ((selected.capabilities & 16) !== 0) up.push({id:"factory_reset",label:"Factory reset"})
+            return up
+        }
 
         var hasKeys = !!selected.keyUid                      // Status hasKeyPair: a seed is present
         var canReset = (selected.capabilities & 16) !== 0
@@ -363,7 +369,9 @@ ColumnLayout {
                 LogosText { Layout.fillWidth: true; textFormat: Text.PlainText; color: Theme.palette.textSecondary; text: admin.selected ? "Private keys:  " + (admin.selected.keyUid ? "present" : "not loaded") : "" }
                 LogosText { Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText; color: Theme.palette.textSecondary; text: "Authenticity:  " + (admin.authenticity || "—") }
                 // More details as a link at the end of the card.
-                LogosLink { objectName: "statusDetails"; Layout.topMargin: Theme.spacing.tiny; enabled: !admin.busy; text: "More details"; onActivated: admin.runStatusOp("status") }
+                // More details (PIN/PUK attempts, pairing slots) only has more to show for an
+                // initialized, paired card; hide it for an unpaired or uninitialized one.
+                LogosLink { objectName: "statusDetails"; visible: admin.needsStatusRead; Layout.topMargin: Theme.spacing.tiny; enabled: !admin.busy; text: "More details"; onActivated: admin.runStatusOp("status") }
             }
         }
         // Until the card's state is known, show a brief placeholder instead of the action list, so
