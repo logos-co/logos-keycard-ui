@@ -155,14 +155,18 @@ bool KeycardUiBackend::refresh()
         for (auto v : array(shellDevicesJson())) {
             auto serial = v.toObject().value("serial").toString();
             const auto verified = v.toObject().value("verifiedMasterKeyId").toString();
+            // A pending (unidentified) or different-seed Shell is NOT this wallet's device: it must
+            // not be turned into a connection on a wallet it may not belong to, nor mark it connected.
+            // It surfaces only as the pending-Shell notification (shellDevicesJson) until the person
+            // identifies it; only then does its one matching wallet show connected.
+            if (verified.isEmpty() || wallet.value("id").toString() != "seed:" + verified) continue;
             int known = -1;
             for (int j = 0; j < connections.size(); ++j)
                 if (connections[j].toObject().value("serial").toString() == serial) known = j;
             auto connection = known < 0 ? QJsonObject{{"transport", "shell"}, {"provider", "shell"}, {"serial", serial}}
                                         : connections[known].toObject();
             connection["connected"] = true;
-            connection["verification"] = verified.isEmpty() ? "pending"
-                : wallet.value("id").toString() == "seed:" + verified ? "verified" : "different";
+            connection["verification"] = "verified";
             if (known < 0) connections.append(connection); else connections[known] = connection;
             wallet["connected"] = true;
         }
