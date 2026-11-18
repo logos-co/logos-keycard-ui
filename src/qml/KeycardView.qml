@@ -15,7 +15,6 @@ Item {
     // Startup has stalled if the view module is not ready after a grace window. Turns the
     // silent, timeout-less "Starting" into an honest, actionable state.
     property bool startupStalled: false
-    readonly property url iconRefresh: Qt.resolvedUrl("assets/refresh.svg")
     readonly property url iconEdit: Qt.resolvedUrl("assets/edit.svg")
     readonly property url iconTrash: Qt.resolvedUrl("assets/trash.svg")
     readonly property url iconLock: Qt.resolvedUrl("assets/lock.svg")
@@ -307,7 +306,6 @@ Item {
                 // person approves an Identify request on the device); green once identified.
                 LogosBadge { objectName: "connectionStatusShell"; visible: root.ready && root.shellDevices.length > 0; text: "Shell via USB"; color: root.anyShellUnidentified ? Theme.palette.warning : Theme.palette.success }
             }
-            LogosIconButton { objectName: "refreshButton"; iconSource: root.iconRefresh; enabled: root.ready && !root.working; onClicked: root.backend.refresh() }
         }
         LogosTabBar {
             id: areaTabs; objectName: "areaTabs"; Layout.fillWidth: true
