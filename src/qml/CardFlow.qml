@@ -55,15 +55,15 @@ LogosDialog {
             steps:[ pin("Enter your PIN", "The 6-digit PIN for this card."),
                     {key:"slot", kind:"text", digitsOnly:true, title:"Pairing slot", desc:"A slot index from 0 to 9. Read Card status to find this app's slot. Clearing this app's own slot unpairs it too.", placeholder:"Slot (0-9)", minLen:1, maxLen:1} ] }
         if (action === "generate_key") return { title:"Generate keys without backup", secret:"pin", retry:"pinRetries", success:"Keys were generated on the card.",
-            steps:[ {key:"warn", kind:"info", warn:true, title:"No recovery backup", desc:"This generates keys with NO recovery phrase. If the card is lost or reset, its wallet cannot be recovered. Use Create recovery phrase for a recoverable wallet."},
+            steps:[ {key:"warn", kind:"info", warn:true, title:"No recovery phrase", desc:"This generates keys with NO recovery phrase. If the card is lost or reset, its wallet cannot be recovered. Use Create recovery phrase for a recoverable wallet."},
                     pin("Enter your PIN", "The 6-digit PIN for this card."),
                     {key:"confirm", kind:"confirm", expect:"NO BACKUP", title:"Type to confirm", desc:"Type NO BACKUP to confirm you understand there is no recovery.", placeholder:"NO BACKUP"} ] }
         if (action === "remove_key") return { title:"Erase keys", secret:"pin", retry:"pinRetries", success:"The keys were erased from the card.",
-            steps:[ {key:"warn", kind:"info", warn:true, title:"Erase recovery keys", desc:"Erases the recovery keys from this card. You need a backup to restore access to funds. PIN, PUK and pairings remain. Saved accounts on this computer are kept."},
+            steps:[ {key:"warn", kind:"info", warn:true, title:"Erase recovery keys", desc:"Erases the recovery keys from this card. You need your recovery phrase to restore access to funds. PIN, PUK and pairings remain. Saved accounts on this computer are kept."},
                     pin("Enter your PIN", "The 6-digit PIN for this card."),
                     {key:"confirm", kind:"confirm", expect:"ERASE", title:"Type to confirm", desc:"Type ERASE to confirm.", placeholder:"ERASE"} ] }
         if (action === "factory_reset") return { title:"Factory reset", secret:"", retry:"", success:"The card has been factory reset.",
-            steps:[ {key:"warn", kind:"info", warn:true, title:"Erase everything on the card", desc:"Factory reset erases keys, PIN, PUK, pairings and card metadata. It needs no PIN. You need a backup to restore access to funds. Saved names and accounts on this computer are kept."},
+            steps:[ {key:"warn", kind:"info", warn:true, title:"Erase everything on the card", desc:"Factory reset erases keys, PIN, PUK, pairings and card metadata. It needs no PIN. You need your recovery phrase to restore access to funds. Saved names and accounts on this computer are kept."},
                     {key:"confirm", kind:"confirm", expect:"RESET", title:"Type to confirm", desc:"Type RESET to confirm.", placeholder:"RESET"} ] }
         if (action === "initialize") {
             // A fresh card: no current PIN. 3.x cards need a pairing password set here; 4.0 cards do
