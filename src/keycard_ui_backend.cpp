@@ -379,13 +379,25 @@ bool KeycardUiBackend::renameCard(QString id, QString name)
 bool KeycardUiBackend::forgetSavedCard(QString id)
 {
     // Forgetting only drops the saved accounts and name from this computer; nothing on the card is
-    // touched. It works with the Keycard still in the reader: the wallet simply returns as an
-    // unknown wallet, ready to set up again.
+    // touched. A wallet lives in one store (a reader card or the Shell); the other store legitimately
+    // reports it "unknown", which is NOT a failure of forgetting the wallet. This matters for a wallet
+    // a connected Shell lists but does not own: forgetting it on the card must still succeed rather than
+    // fail on the Shell's "Unknown wallet". So: forget from each store that lists it, treat a
+    // not-owned-here reply as benign, and fail only on a real error.
     startAction(); refresh();
-    bool result = true;
-    if (containsGroup(cardGroupsJson(), id)) result &= ok(parseObject(modules().keycard_module.forget_saved_card(id)), "Forget wallet");
-    if (result && containsGroup(shellGroupsJson(), id)) result &= ok(parseObject(modules().keycard_shell_module.forget_wallet(id)), "Forget wallet");
-    refresh(); return result;
+    bool hardError = false;
+    auto notOwnedHere = [](const QString &e) {
+        return e.contains(QStringLiteral("Unknown wallet"), Qt::CaseInsensitive)
+            || e.contains(QStringLiteral("unknown card"), Qt::CaseInsensitive);
+    };
+    auto tryForget = [&](const QJsonObject &reply) {
+        if (reply.value(QStringLiteral("ok")).toBool()) return;
+        const QString e = reply.value(QStringLiteral("error")).toString();
+        if (!notOwnedHere(e)) { setLastError(QStringLiteral("Forget wallet: %1").arg(e)); hardError = true; }
+    };
+    if (containsGroup(cardGroupsJson(), id)) tryForget(parseObject(modules().keycard_module.forget_saved_card(id)));
+    if (containsGroup(shellGroupsJson(), id)) tryForget(parseObject(modules().keycard_shell_module.forget_wallet(id)));
+    refresh(); return !hardError;
 }
 
 bool KeycardUiBackend::identifyWallet(QString serial)

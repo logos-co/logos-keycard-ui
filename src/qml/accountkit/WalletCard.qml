@@ -182,7 +182,10 @@ Frame {
             }
             LogosIconButton {
                 objectName: card.namePrefix + "Forget"
-                visible: !!card.trashAction && !card.locked
+                // Shown whenever a Forget action is offered, locked wallets included: a locked wallet
+                // whose card was reset or lost must be removable from the list. (The action itself is
+                // only offered for wallets committed on this computer.)
+                visible: !!card.trashAction
                 enabled: !card.trashAction || card.trashAction.enabled !== false
                 Layout.alignment: Qt.AlignTop
                 flat: true; size: 28; iconSize: 16
