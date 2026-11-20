@@ -184,9 +184,15 @@ Item {
         var add = hideAdd
             ? []
             : [{ id: "add", label: "Add accounts", enabled: g.connected && !root.working && !g.legacy && g.locked !== true }]
-        // An unknown wallet, or a card with no wallet yet (no seed), has nothing to rename or forget:
-        // only Card administration (on the connection strip), where a seed is created or imported.
-        if (unknown || cardNoSeed(g)) return add
+        // An unknown wallet, or a card with no wallet yet (no seed), has nothing to rename: only Card
+        // administration (on the connection strip), where a seed is created or imported. But a wallet
+        // that is committed on this computer (locked, named, or with saved accounts) still has local
+        // data, so keep Forget — otherwise a locked wallet whose card was reset or lost is stuck in
+        // the list with no way to remove it.
+        if (unknown || cardNoSeed(g))
+            return root.committed(g)
+                 ? add.concat([{ id: "forget", label: "Forget wallet…" }])
+                 : add
         return add.concat([{ id: "rename", label: "Rename…" }])
                  .concat([{ id: "forget", label: "Forget wallet…" }])
     }
