@@ -158,6 +158,8 @@ bool KeycardUiBackend::refresh()
             int known = -1;
             for (int j = 0; j < connections.size(); ++j)
                 if (connections[j].toObject().value("serial").toString() == serial) known = j;
+            // A Shell connects only the wallet it verified, or, until verified, one that saved it.
+            if (verified.isEmpty() ? known < 0 : wallet.value("id").toString() != "seed:" + verified) continue;
             auto connection = known < 0 ? QJsonObject{{"transport", "shell"}, {"provider", "shell"}, {"serial", serial}}
                                         : connections[known].toObject();
             connection["connected"] = true;
