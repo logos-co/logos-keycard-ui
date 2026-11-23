@@ -101,13 +101,14 @@ Item {
     // (no reader vs empty reader vs reader-present-but-PCSC-rejected) need keycard_module to
     // report bare readers; tracked upstream. Here we honestly show what we can see.
     readonly property bool anyConnected: cards.length > 0 || shellDevices.length > 0
-    // card present (green) is reliable. A bare reader cannot be told from no reader at all,
-    // since keycard_module.cards() reports only readers that hold a card, so the empty case is
-    // one honest "No card detected" (warning) until the module reports bare readers.
+    // card present (green) is reliable. keycard_module.readers() lists empty readers too, so the
+    // empty case says which it is: a reader with no card in it, or no reader at all (warning).
+    readonly property var readers: ready ? j(backend.readersJson, "[]") : []
     readonly property string connLabel: !ready ? (startupStalled ? "Not responding" : "Starting")
         : cards.length > 0 ? "Card connected"
         : shellDevices.length > 0 ? "Shell connected"
-        : "No card detected"
+        : readers.length > 0 ? "Reader: no card"
+        : "No reader"
     readonly property color connColor: !ready ? (startupStalled ? Theme.palette.warning : Theme.palette.textSecondary)
         : anyConnected ? Theme.palette.success
         : Theme.palette.warning

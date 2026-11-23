@@ -135,6 +135,10 @@ bool KeycardUiBackend::refresh()
     const QJsonObject cards = parseObject(modules().keycard_module.cards());
     const QJsonArray present = cards.value(QStringLiteral("cards")).toArray();
     setCardsJson(ok(cards, QStringLiteral("cards")) ? compact(present) : QStringLiteral("[]"));
+    const QJsonObject readers = parseObject(modules().keycard_module.readers());
+    setReadersJson(readers.value(QStringLiteral("ok")).toBool()
+                       ? compact(readers.value(QStringLiteral("readers")).toArray())
+                       : QStringLiteral("[]"));
     const QJsonObject accounts = parseObject(modules().keycard_module.signer_accounts());
     setAccountsJson(ok(accounts, QStringLiteral("accounts"))
                         ? compact(accounts.value(QStringLiteral("accounts")))
