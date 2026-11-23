@@ -375,7 +375,9 @@ bool KeycardUiBackend::renameCard(QString id, QString name)
 bool KeycardUiBackend::forgetSavedCard(QString id)
 {
     startAction(); refresh();
-    if (findGroup(cardGroupsJson(), id).value("connected").toBool()) {
+    // A seed wallet forgets with its card inserted (keycard_module touches nothing on the card); a
+    // physical card id still needs the card out, or the inserted card is remembered again at once.
+    if (!id.startsWith(QStringLiteral("seed:")) && findGroup(cardGroupsJson(), id).value("connected").toBool()) {
         setLastError("Remove this wallet's Keycards from their readers before forgetting it."); return false;
     }
     bool result = true;

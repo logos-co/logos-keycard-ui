@@ -617,6 +617,11 @@ Item {
         property bool working: false
         readonly property var group: root.wallets.find(function(g) { return g.id === forgetSheet.cardId })
         readonly property bool connected: !!group && (group.connections || []).some(function(c) { return c.transport !== "shell" && c.connected })
+        // keycard_module forgets a seed wallet with its card inserted (nothing on the card changes, and
+        // the card shows again as one not added yet). A physical card id still needs the card out,
+        // since an inserted card would be remembered again at once.
+        readonly property bool seedWallet: cardId.indexOf("seed:") === 0
+        readonly property bool needsCardOut: connected && !seedWallet
         anchors.centerIn: parent
         width: Math.min(parent.width - 40, 580)
         onOpened: working = false
@@ -637,8 +642,15 @@ Item {
             LogosText {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
-                visible: forgetSheet.connected
+                visible: forgetSheet.needsCardOut
                 text: "Remove this Keycard from its reader before forgetting it."
+            }
+            LogosText {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                visible: forgetSheet.connected && forgetSheet.seedWallet
+                color: Theme.palette.textSecondary
+                text: "The card can stay in the reader. Afterwards it shows as a card not added yet."
             }
             LogosText {
                 Layout.fillWidth: true
@@ -658,7 +670,7 @@ Item {
                 LogosButton {
                     objectName: "confirmForgetSavedCard"
                     text: forgetSheet.working ? "Forgetting…" : "Forget Keycard"
-                    enabled: !!forgetSheet.group && !forgetSheet.connected && !forgetSheet.working
+                    enabled: !!forgetSheet.group && !forgetSheet.needsCardOut && !forgetSheet.working
                     onClicked: {
                         forgetSheet.working = true
                         logos.watch(root.backend.forgetSavedCard(forgetSheet.cardId), function(ok) {
