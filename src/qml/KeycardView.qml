@@ -47,6 +47,7 @@ Item {
     readonly property var connection: connections.find(function(c) { return root.route(c) === root.selectedConnectionId }) || connections[0] || null
     readonly property bool shell: !!connection && connection.transport === "shell"
     readonly property var card: shell || !connection ? null : cards.find(function(c) { return cardId(c) === root.connection.id }) || null
+    readonly property var readers: ready ? j(backend.readersJson, "[]") : []
     readonly property string reader: card ? card.reader : ""
     readonly property bool needsPairing: card !== null && card.secureChannel === 1 && !card.paired
     readonly property bool connected: !!connection && connection.connected
@@ -131,7 +132,10 @@ Item {
             }
             LogosText {
                 Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.textSecondary
-                text: "Connect a Keycard reader or a Keycard Shell over USB. Your keys stay on the card."
+                // keycard_module.readers() lists empty readers too, so say which of the three it is.
+                text: root.readers.length === 0 ? "Connect a Keycard reader or a Keycard Shell over USB. Your keys stay on the card."
+                    : root.readers.some(function(r) { return r.card }) ? "Keycard in the reader. Your keys stay on the card."
+                    : "Reader connected, no card in it. Insert a Keycard."
             }
             LogosText { visible: root.ready && root.wallets.length === 0; text: "Connect a Keycard to add your first wallet." }
             LogosButton { objectName: "reviewUnverified"; visible: root.unsigned.length > 0; text: "Review unverified Keycard…"; onClicked: trustSheet.open() }

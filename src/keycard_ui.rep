@@ -9,6 +9,8 @@ class KeycardUi
     // trustedByPerson?, paired, error?, untrusted? }]`; `untrusted` is the identity key of a 4.0 card
     // refused because Keycard didn't sign it.
     PROP(QString cardsJson="[]" READONLY)
+    // Every connected reader, empty or not: `[{ reader, card }]` (keycard_module.readers()).
+    PROP(QString readersJson="[]" READONLY)
     // The accounts offered to apps, public material only.
     PROP(QString accountsJson="[]" READONLY)
     PROP(QString cardGroupsJson="[]" READONLY)
