@@ -30,6 +30,10 @@
     {
       "name": "keycard_shell_module",
       "version": "~0.2.0"
+    },
+    {
+      "name": "signer_manager_module",
+      "version": "~0.2.0"
     }
   ],
   "codegen": {
