@@ -53,17 +53,23 @@ LogosDialog {
     property int networkIdx: 0           // 0 Bitcoin · 1 Test networks
     property string firstIndexText: "0"
 
-    readonly property int stepCount: 4
+    // A Shell skips the authorise step (nothing to enter; it asks on its own screen): three steps.
+    readonly property int stepCount: flow.shell ? 3 : 4
+    readonly property int stepNumber: flow.shell && flow.step > 1 ? flow.step : flow.step + 1
     readonly property string family: coinIdx === 0 ? "evm" : scriptIdx === 0 ? "bitcoin" : "bitcoin_taproot"
     readonly property string chain: networkIdx === 0 ? "main" : "test"
-    readonly property int pageSize: flow.shell ? 1 : 5
+    // A Shell exports the EVM xpub once a connection and the module derives the addresses
+    // (logos-keycard-shell-module#14), so EVM pages are five again. Bitcoin accounts are hardened:
+    // each still needs its own export on the Shell, so those stay one at a time (ADR-0012).
+    readonly property bool shellPerKey: flow.shell && flow.family !== "evm"
+    readonly property int pageSize: flow.shellPerKey ? 1 : 5
     readonly property bool taprootOk: flow.shell || (flow.card && flow.card.taproot)
     readonly property bool canPreview: flow.ready && flow.connected && !flow.needsPairing && !flow.working
                                        && flow.asked === "" && (flow.shell || pinDots.valid)
     readonly property var stepTitles: ["Choose accounts", "Authorise", "Select accounts", "Name accounts"]
     readonly property var stepDescs: [
         "Pick the account type and where to start. Only public information leaves the device.",
-        flow.shell ? "Unlock the wallet on your Shell. It asks you to confirm each public-key request on its screen."
+        flow.shell ? "Unlock the wallet on your Shell and confirm the public-key requests on its screen."
                    : (flow.needsPairing ? "This card needs pairing before it can show accounts."
                                         : "Enter the card's PIN. Only public keys leave the card."),
         "Choose the accounts to add. Already-added accounts are marked.",
@@ -115,7 +121,7 @@ LogosDialog {
     function run(what, request, secret) {
         flow.notice = ""; flow.asked = what
         flow.workingText = what === "keep" ? "Adding the accounts…"
-                         : flow.shell ? "Press OK on the Shell to confirm the public-key request…"
+                         : flow.shell ? "Confirm the public-key requests on the Shell…"
                                       : "Reading the card's accounts…"
         flow.phase = "working"
         logos.watch(flow.backend.addAccounts(flow.walletId, flow.route(flow.connection), JSON.stringify(request), secret), function (ok) {
@@ -136,7 +142,8 @@ LogosDialog {
             var wasF = flow.asked; flow.asked = ""
             flow.notice = (flow.exporting && flow.exporting.error) || "The device did not answer."
             flow.phase = "input"
-            flow.step = wasF === "preview" ? 1 : 3      // preview fail → back to authorise; commit fail → back to name
+            // preview fail → back to authorise (a Shell has none: back to choose); commit fail → back to name
+            flow.step = wasF === "preview" ? (flow.shell ? 0 : 1) : 3
             return
         }
         if (st !== "done") return
@@ -196,7 +203,7 @@ LogosDialog {
                     Layout.fillWidth: true
                     Layout.topMargin: Theme.spacing.large
                     spacing: Theme.spacing.tiny
-                    LogosText { Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; text: "Step " + (flow.step + 1) + " of " + flow.stepCount; color: Theme.palette.textSecondary; font.pixelSize: Theme.typography.secondaryText }
+                    LogosText { Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; text: "Step " + flow.stepNumber + " of " + flow.stepCount; color: Theme.palette.textSecondary; font.pixelSize: Theme.typography.secondaryText }
                     LogosText { Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; text: flow.stepTitles[flow.step]; color: Theme.palette.text; font.weight: Theme.typography.weightBold; font.pixelSize: Theme.typography.subtitleText }
                     LogosText { Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; text: flow.stepDescs[flow.step]; color: Theme.palette.textSecondary; font.pixelSize: Theme.typography.secondaryText }
                 }
@@ -269,7 +276,9 @@ LogosDialog {
                             spacing: Theme.spacing.small
                             LogosText {
                                 Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap
-                                text: "Press Show accounts, then confirm each public-key request on the Shell. This page shows one account at a time; use Next for more."
+                                text: flow.shellPerKey
+                                      ? "Press Show accounts, then confirm each public-key request on the Shell. Bitcoin accounts are shown one at a time, each confirmed on the Shell; use Next for more."
+                                      : "Press Show accounts, then confirm the public-key requests on the Shell. While it stays connected, Next shows more accounts with no further confirmations."
                                 color: Theme.palette.textSecondary; font.pixelSize: Theme.typography.secondaryText
                             }
                         }
@@ -470,16 +479,25 @@ LogosDialog {
                 visible: flow.phase === "input"
                 text: flow.step === 0 ? "Cancel" : "Back"
                 enabled: !flow.working && !flow.pairing
-                onClicked: { if (flow.step === 0) flow.close(); else { flow.step = flow.step - 1; flow.notice = "" } }
+                // A Shell skips the authorise step, so Back from its account list returns to choose.
+                onClicked: {
+                    if (flow.step === 0) flow.close()
+                    else { flow.step = flow.shell && flow.step === 2 ? 0 : flow.step - 1; flow.notice = "" }
+                }
             }
             Item { Layout.fillWidth: true }
 
-            // Step 0 → continue to authorise.
+            // Step 0 → continue to authorise. A Shell has nothing to enter there (it asks on its own
+            // screen), so it goes straight to reading the accounts.
             LogosButton {
                 visible: flow.phase === "input" && flow.step === 0
-                text: "Continue"; variant: LogosButton.Variant.Primary
-                enabled: firstIndex.textInput.acceptableInput
-                onClicked: { flow.clearRows(); flow.step = 1 }
+                text: flow.shell ? "Show accounts" : "Continue"; variant: LogosButton.Variant.Primary
+                enabled: firstIndex.textInput.acceptableInput && (!flow.shell || flow.canPreview)
+                onClicked: {
+                    flow.clearRows()
+                    if (flow.shell) flow.preview(Number(flow.firstIndexText))
+                    else flow.step = 1
+                }
             }
             // Step 1 → pair (card needing it) or read the first page.
             LogosButton {
