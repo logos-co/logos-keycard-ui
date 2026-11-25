@@ -3,6 +3,7 @@ import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import Logos.Controls
 import Logos.Theme
+import "errors.js" as Errors
 import "accountkit" as Accounts
 
 ColumnLayout {
@@ -31,7 +32,7 @@ ColumnLayout {
         logos.watch(backend.administer(JSON.stringify(p)), function(raw) {
             var r; try { r = JSON.parse(raw) } catch(e) { r = {ok:false} }
             authenticity = r.ok ? (r.genuine ? "Verified by Keycard" : "Not certified by Keycard") : "Could not verify"
-        })
+        }, function() { authenticity = "Could not verify" })
     }
     // The card's PIN/PUK retry counts are the AUTHORITATIVE blocked signal: cards() carries a stale
     // pinRetries and no pukRetries (see docs/keycard-state-action-map.md), so the block state can't
@@ -68,7 +69,7 @@ ColumnLayout {
             localPinRetries = (r && r.ok && typeof r.pinRetries === "number") ? r.pinRetries : -1
             localPukRetries = (r && r.ok && typeof r.pukRetries === "number") ? r.pukRetries : -1
             localRead = true
-        })
+        }, function() { onCardName = ""; localRead = true })
     }
     // Blocked state, from the authoritative retry counts (insert-time cache, or this panel's read).
     readonly property bool blockedPin: cardPinRetries === 0
@@ -205,10 +206,10 @@ ColumnLayout {
             var r
             try { r = JSON.parse(raw) } catch(e) { r = {ok:false, error:"The card did not return a valid response. Refresh its status before retrying."} }
             failed = !r.ok || r.genuine === false
-            message = r.ok ? (r.message || "Done.") : (r.error || "Operation failed.")
+            message = r.ok ? (r.message || "Done.") : (Errors.human(r.error) || "Operation failed.")
             if (r.ok && id === "status") message = "PIN attempts left: " + r.pinRetries + " · PUK attempts left: " + r.pukRetries + (selected.secureChannel === 1 ? "\nFree pairing slots: " + r.freePairingSlots + " · This app's slot: " + r.pairingSlot : "")
             r = null
-        })
+        }, function() { busy = false; failed = true; message = "The Keycard app did not answer. Try again." })
     }
     onActiveChanged: {
         if (active) { busy = false; picker.currentIndex = Math.max(0, usableCards.findIndex(function(c) { return c.adminId === admin.preferredCard })); selectCard(usableCards.length ? picker.currentIndex : -1); preferredCard = "" }
@@ -284,14 +285,14 @@ ColumnLayout {
             busy = false
             var r
             try { r = JSON.parse(raw) } catch(e) { r = {ok:false,error:"The card did not return a valid response. Refresh its status before retrying."} }
-            failed = !r.ok || r.genuine === false; message = r.ok ? r.message || "Done." : r.error || "Operation failed."
+            failed = !r.ok || r.genuine === false; message = r.ok ? r.message || "Done." : Errors.human(r.error) || "Operation failed."
             if (r.phrase) generated = r.phrase.split(" ")
             if (r.ok && op === "load_phrase") generated = []
             if (r.ok && op === "set_name") readCardName()
             if (r.ok && op === "status") message = "PIN attempts left: " + r.pinRetries + " · PUK attempts left: " + r.pukRetries + (selected.secureChannel === 1 ? "\nFree pairing slots: " + r.freePairingSlots + " · This app's slot: " + r.pairingSlot : "")
             if (r.data !== undefined) data.text = r.data
             r = null
-        })
+        }, function() { busy = false; failed = true; message = "The Keycard app did not answer. Try again." })
         request = ""
     }
     LogosScrollView {
@@ -446,7 +447,7 @@ ColumnLayout {
             anchors.centerIn: parent
             width: Math.min((parent ? parent.width : 600) - 40, 560)
             closePolicy: admin.busy ? Popup.NoAutoClose : (Popup.CloseOnEscape | Popup.CloseOnPressOutside)
-            onClosed: if (!admin.busy) { admin.infoTitle = ""; admin.action = "" }
+            onClosed: if (!admin.busy) { admin.infoTitle = ""; admin.action = ""; admin.message = "" }
             contentItem: ColumnLayout {
                 spacing: Theme.spacing.small
                 LogosScrollView {

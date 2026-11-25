@@ -3,6 +3,7 @@ import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import Logos.Controls
 import Logos.Theme
+import "errors.js" as Errors
 import "accountkit" as Accounts
 
 // A guided, one-input-per-screen flow for the card operations, modelled on the Status Keycard flows:
@@ -249,7 +250,7 @@ LogosDialog {
                          : flow.action === "verify_phrase" ? "Checking the recovery phrase…"
                          : "Writing to the card…"
         flow.phase = "working"; flow.errorMsg = ""
-        logos.watch(flow.backend.administer(JSON.stringify(p)), function (raw) { flow.handleReply(raw) })
+        logos.watch(flow.backend.administer(JSON.stringify(p)), function (raw) { flow.handleReply(raw) }, function () { flow.lostReply() })
     }
     function readAttempts(cb) {
         var p = { action: "status", reader: flow.card.reader, cardId: flow.card.adminId, keyUid: flow.card.keyUid || "" }
@@ -257,7 +258,7 @@ LogosDialog {
             var r; try { r = JSON.parse(raw) } catch (e) { r = {} }
             var att = r && r.ok ? (flow.plan.retry === "pukRetries" ? r.pukRetries : r.pinRetries) : -1
             cb(typeof att === "number" ? att : -1)
-        })
+        }, function () { cb(-1) })
     }
     function goToSecretStep() {
         for (var i = 0; i < flow.steps.length; i++) if (flow.steps[i].key === flow.plan.secret) { flow.idx = i; break }
@@ -272,8 +273,10 @@ LogosDialog {
                   phrase: flow.seedWords, pin: flow.vals.pin, passphrase: "", confirmation: "BACKED UP" }
         flow.workingText = "Writing to the card…"
         flow.phase = "working"; flow.errorMsg = ""
-        logos.watch(flow.backend.administer(JSON.stringify(p)), function (raw) { flow.handleReply(raw) })
+        logos.watch(flow.backend.administer(JSON.stringify(p)), function (raw) { flow.handleReply(raw) }, function () { flow.lostReply() })
     }
+    // The call itself was lost: no answer came back, so nothing is known to have changed.
+    function lostReply() { flow.phase = "error"; flow.errorMsg = "The Keycard app did not answer. Try again." }
     function handleReply(raw) {
         var r; try { r = JSON.parse(raw) } catch (e) { r = { ok:false, error:"The card did not return a valid response. Reconnect it and try again." } }
         if (r.ok) {
@@ -284,7 +287,7 @@ LogosDialog {
             if (flow.plan.result && r.data !== undefined) flow.resultText = r.data
             flow.phase = "success"; flow.clearSecrets(); return
         }
-        var msg = r.error || "The operation failed."
+        var msg = Errors.human(r.error) || "The operation failed."
         var wrongSecret = r.code === "WrongSecret" || /wrong (pin|puk|pairing)/i.test(msg)
         var blocked = /block/i.test(msg)
         // PIN-counted flows: wrong PIN / block routing with attempts.
