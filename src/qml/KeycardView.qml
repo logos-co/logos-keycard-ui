@@ -4,6 +4,7 @@ import QtQuick.Layouts 1.15
 import Logos.Controls
 import Logos.Theme
 import "accountkit" as Accounts
+import "errors.js" as Errors
 
 Item {
     id: root
@@ -223,6 +224,11 @@ Item {
             s[k] = { pin: (r && r.ok && typeof r.pinRetries === "number") ? r.pinRetries : -1,
                      puk: (r && r.ok && typeof r.pukRetries === "number") ? r.pukRetries : -1 }
             cardStateCache = s
+        }, function () {
+            // Lost: settle it as unknown, so the card is not left "Reading card…".
+            delete cardNamePending[k]
+            var c = cardNameCache; c[k] = ""; cardNameCache = c
+            var s = cardStateCache; s[k] = { pin: -1, puk: -1 }; cardStateCache = s
         })
     }
     function cardNameFor(c) {
@@ -302,6 +308,24 @@ Item {
     function selectWallet(g) { selectedWalletId = g.id; selectedConnectionId = ""; pendingWallet = g.pending ? g : null }
     function openAdd(g) { selectWallet(g); addSheet.open() }
     function grouped(hex) { return (hex || "").replace(/(.{8})/g, "$1 ").trim() }
+
+    // ── one error, one place ───────────────────────────────────────────────────────
+    // The backend keeps a single lastError for every action, and it stays set until the next
+    // action succeeds. Each dialog reads it as its own call answers and shows it itself
+    // (SheetError), so the page line shows only what the page did: never while a dialog is up or
+    // the Administration tab is open, and never an error already on screen before that.
+    readonly property var sheets: [addSheet, identifySheet, renameWalletSheet, renameAccountSheet, trustSheet, forgetSheet]
+    readonly property bool sheetUp: areaTabs.currentIndex !== 0 || sheets.some(function (s) { return s && s.visible })
+    property string errorSeen: ""
+    onSheetUpChanged: root.errorSeen = root.ready ? root.backend.lastError : ""
+    // An action on the page itself: its answer shows on the page, even worded as the last one.
+    function pageAction() { root.errorSeen = "" }
+    readonly property string pageError:
+        !ready || sheetUp || root.backend.lastError === errorSeen ? "" : Errors.human(root.backend.lastError)
+    Connections {
+        target: root.ready ? root.backend : null
+        function onLastErrorChanged() { if (root.backend.lastError === "") root.errorSeen = "" }
+    }
 
     ColumnLayout {
         id: appHeader
@@ -425,7 +449,13 @@ Item {
                                     text: shellNote.submitting ? "Approve on Shell…" : "Identify"
                                     variant: LogosButton.Variant.Primary
                                     enabled: !shellNote.submitting && !root.working
-                                    onClicked: { root.identifyingSerial = shellNote.modelData.serial; logos.watch(root.backend.identifyWallet(shellNote.modelData.serial), function(ok) { if (!ok) root.identifyingSerial = "" }) }
+                                    onClicked: {
+                                        root.identifyingSerial = shellNote.modelData.serial
+                                        root.pageAction()
+                                        logos.watch(root.backend.identifyWallet(shellNote.modelData.serial),
+                                                    function(ok) { if (!ok) root.identifyingSerial = "" },
+                                                    function() { root.identifyingSerial = "" })
+                                    }
                                 }
                                 LogosButton {
                                     objectName: "shellIdentifyDismiss"
@@ -492,11 +522,11 @@ Item {
                     onStripAction: function (i, id) {
                         var strip = group.strips[i]
                         if (id === "admin") { adminSheet.preferredCard = strip.card.adminId; areaTabs.currentIndex = 1 }
-                        else if (id === "stoptrust") logos.watch(root.backend.forgetCard(strip.card.identity), function(ok) {})
+                        else if (id === "stoptrust") { root.pageAction(); logos.watch(root.backend.forgetCard(strip.card.identity), function(ok) {}, function() {}) }
                         else if (id === "identify") { root.selectWallet(group.g); identifySheet.open() }
                     }
                     onAccountAction: function (id, entry) {
-                        if (id === "remove") { logos.watch(root.backend.removeWalletAccount(group.g.id, entry.id), function(ok) {}); return }
+                        if (id === "remove") { root.pageAction(); logos.watch(root.backend.removeWalletAccount(group.g.id, entry.id), function(ok) {}, function() {}); return }
                         renameAccountSheet.walletId = group.g.id
                         renameAccountSheet.accountId = entry.id
                         renameAccountSheet.accountLabel = entry.ownLabel
@@ -505,7 +535,7 @@ Item {
                     }
                 }
             }
-            LogosText { visible: root.ready && !!root.backend.lastError; Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText; color: Theme.palette.error; text: root.ready ? root.backend.lastError : "" }
+            LogosText { objectName: "errorLabel"; visible: root.pageError.length > 0; Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText; color: Theme.palette.error; text: root.pageError }
         }
     }
 
@@ -530,13 +560,38 @@ Item {
         id: identifySheet; objectName: "identifyWalletDialog"; title: "Identify wallet"
         anchors.centerIn: parent; width: Math.min(parent.width - 40, 540)
         closePolicy: root.working ? Popup.NoAutoClose : Popup.CloseOnEscape
+        // The export state is shared with Add accounts and outlives it: show it only once this
+        // dialog has asked, so an earlier failure is never shown here as this one's.
+        property bool asked: false
+        onOpened: { asked = false; identifyError.clear() }
+        onClosed: { asked = false; identifyError.clear() }
         contentItem: ColumnLayout {
             LogosText { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Unlock the wallet on the Shell. Confirm the master public-key request and the saved account checks on its screen. Matching accounts will join the same wallet as your readers and other Shells, keeping their names." }
-            LogosText { Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText; text: root.working ? "Confirm the public-key requests on your Shell…" : root.exporting.state === "done" ? "Wallet identified. Matching accounts are now grouped together." : root.exporting.error || "" }
+            LogosText { objectName: "identifyWalletState"; visible: text !== ""; Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText
+                        text: !identifySheet.asked ? "" : root.working ? "Confirm the public-key requests on your Shell…" : root.exporting.state === "done" ? "Wallet identified. Matching accounts are now grouped together." : "" }
+            SheetError {
+                id: identifyError; objectName: "identifyWalletError"
+                // The job's own failure arrives on the export state, not as the call's answer.
+                Connections {
+                    target: root
+                    function onExportingChanged() {
+                        if (identifySheet.asked && root.exporting.state === "failed")
+                            identifyError.error = Errors.human(root.exporting.error) || "The Shell did not identify the wallet."
+                    }
+                }
+            }
             RowLayout {
                 LogosButton { text: "Close"; enabled: !root.working; onClicked: identifySheet.close() }
                 Item { Layout.fillWidth: true }
-                LogosButton { objectName: "identifyWalletButton"; text: "Identify wallet"; enabled: root.connected && !root.working; onClicked: logos.watch(root.backend.identifyWallet(root.connection.serial), function(ok) {}) }
+                LogosButton {
+                    objectName: "identifyWalletButton"; text: "Identify wallet"; enabled: root.connected && !root.working
+                    onClicked: {
+                        identifyError.clear(); identifySheet.asked = true
+                        logos.watch(root.backend.identifyWallet(root.connection.serial),
+                                    function(ok) { if (!ok) { identifySheet.asked = false; identifyError.take(root.backend, "The Shell did not identify the wallet.") } },
+                                    function() { identifySheet.asked = false; identifyError.lost() })
+                    }
+                }
             }
         }
     }
@@ -544,13 +599,13 @@ Item {
         id: renameWalletSheet; objectName: "renameWalletDialog"; title: "Rename wallet"
         anchors.centerIn: parent; width: Math.min(parent.width - 40, 520)
         property bool saving: false
-        property string errorText: ""
         closePolicy: saving ? Popup.NoAutoClose : Popup.CloseOnEscape
-        onOpened: { walletName.text = root.wallet ? root.wallet.name || "" : ""; errorText = ""; saving = false; walletName.forceActiveFocus() }
+        onOpened: { walletName.text = root.wallet ? root.wallet.name || "" : ""; renameWalletError.clear(); saving = false; walletName.forceActiveFocus() }
+        onClosed: renameWalletError.clear()
         contentItem: ColumnLayout {
             LogosTextField { id: walletName; objectName: "walletName"; Layout.fillWidth: true; placeholderText: "Wallet name"; textInput.maximumLength: 80; enabled: !renameWalletSheet.saving }
             LogosText { text: "Every app shows this name, the Signer app included. Cards and Shells holding this seed share it."; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.textSecondary }
-            LogosText { text: renameWalletSheet.errorText; textFormat: Text.PlainText; visible: !!text; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.error }
+            SheetError { id: renameWalletError; objectName: "renameWalletError" }
             RowLayout {
                 LogosButton { text: "Cancel"; enabled: !renameWalletSheet.saving; onClicked: renameWalletSheet.close() }
                 Item { Layout.fillWidth: true }
@@ -558,11 +613,12 @@ Item {
                     objectName: "saveWalletName"; text: "Save name"; enabled: !renameWalletSheet.saving
                     onClicked: {
                         renameWalletSheet.saving = true
+                        renameWalletError.clear()
                         logos.watch(root.backend.renameCard(root.selectedWalletId, walletName.text), function(ok) {
                             renameWalletSheet.saving = false
                             if (ok) renameWalletSheet.close()
-                            else renameWalletSheet.errorText = root.backend.lastError
-                        })
+                            else renameWalletError.take(root.backend, "The name was not saved.")
+                        }, function() { renameWalletSheet.saving = false; renameWalletError.lost() })
                     }
                 }
             }
@@ -576,14 +632,14 @@ Item {
         property string accountLabel: ""
         property string accountDetails: ""
         property bool saving: false
-        property string errorText: ""
         closePolicy: saving ? Popup.NoAutoClose : Popup.CloseOnEscape
-        onOpened: { accountName.text = accountLabel; errorText = ""; saving = false; accountName.forceActiveFocus() }
+        onOpened: { accountName.text = accountLabel; renameAccountError.clear(); saving = false; accountName.forceActiveFocus() }
+        onClosed: renameAccountError.clear()
         contentItem: ColumnLayout {
             LogosText { text: renameAccountSheet.accountDetails; textFormat: Text.PlainText; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere }
             LogosTextField { id: accountName; objectName: "accountName"; Layout.fillWidth: true; placeholderText: "Account name"; textInput.maximumLength: 80; enabled: !renameAccountSheet.saving }
             LogosText { text: "This name is saved locally and shown to apps. Leave it blank to use the default label."; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.textSecondary }
-            LogosText { text: renameAccountSheet.errorText; textFormat: Text.PlainText; visible: !!text; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.error }
+            SheetError { id: renameAccountError; objectName: "renameAccountError" }
             RowLayout {
                 LogosButton { text: "Cancel"; enabled: !renameAccountSheet.saving; onClicked: renameAccountSheet.close() }
                 Item { Layout.fillWidth: true }
@@ -591,11 +647,12 @@ Item {
                     objectName: "saveAccountName"; text: "Save name"; enabled: !renameAccountSheet.saving
                     onClicked: {
                         renameAccountSheet.saving = true
+                        renameAccountError.clear()
                         logos.watch(root.backend.renameAccount(renameAccountSheet.walletId, renameAccountSheet.accountId, accountName.text), function(ok) {
                             renameAccountSheet.saving = false
                             if (ok) renameAccountSheet.close()
-                            else renameAccountSheet.errorText = root.backend.lastError
-                        })
+                            else renameAccountError.take(root.backend, "The name was not saved.")
+                        }, function() { renameAccountSheet.saving = false; renameAccountError.lost() })
                     }
                 }
             }
@@ -609,6 +666,8 @@ Item {
     LogosDialog {
         id: trustSheet; objectName: "trustDialog"; title: "Review Keycard identity"
         anchors.centerIn: parent; width: Math.min(parent.width-40, 680)
+        onOpened: { ownCard.checked = false; trustError.clear() }
+        onClosed: trustError.clear()
         contentItem: ColumnLayout {
             Rectangle {
                 objectName: "untrustedPanel"
@@ -660,10 +719,16 @@ Item {
                         objectName: "trustButton"
                         text: "Trust this card"
                         enabled: root.ready && ownCard.checked && root.unsigned.length > 0
-                        onClicked: logos.watch(root.backend.trustCard(root.unsigned[0].reader,
-                                                                      root.unsigned[0].untrusted),
-                                               function (trusted) { ownCard.checked = false; if (trusted) trustSheet.close() })
+                        onClicked: {
+                            trustError.clear()
+                            logos.watch(root.backend.trustCard(root.unsigned[0].reader, root.unsigned[0].untrusted),
+                                        function (trusted) {
+                                            ownCard.checked = false
+                                            if (trusted) trustSheet.close(); else trustError.take(root.backend, "The card was not trusted.")
+                                        }, function () { ownCard.checked = false; trustError.lost() })
+                        }
                     }
+                    SheetError { id: trustError; objectName: "trustError" }
                 }
             }
             LogosButton { text: "Close"; onClicked: trustSheet.close() }
@@ -679,7 +744,8 @@ Item {
         readonly property var group: root.wallets.find(function(g) { return g.id === forgetSheet.cardId })
         anchors.centerIn: parent
         width: Math.min(parent.width - 40, 580)
-        onOpened: working = false
+        onOpened: { working = false; forgetError.clear() }
+        onClosed: forgetError.clear()
         contentItem: ColumnLayout {
             spacing: Theme.spacing.medium
             LogosText {
@@ -694,13 +760,7 @@ Item {
                 wrapMode: Text.WordWrap
                 text: "Remove this wallet's saved accounts and name from this computer. Nothing on the Keycard or Shell is erased. While its Keycard stays connected it returns as an unknown wallet, ready to set up again."
             }
-            LogosText {
-                Layout.fillWidth: true
-                wrapMode: Text.WordWrap
-                textFormat: Text.PlainText
-                color: Theme.palette.error
-                text: root.ready ? root.backend.lastError : ""
-            }
+            SheetError { id: forgetError; objectName: "forgetSavedCardError" }
             RowLayout {
                 LogosButton {
                     objectName: "cancelForgetSavedCard"
@@ -715,10 +775,11 @@ Item {
                     enabled: !!forgetSheet.group && !forgetSheet.working
                     onClicked: {
                         forgetSheet.working = true
+                        forgetError.clear()
                         logos.watch(root.backend.forgetSavedCard(forgetSheet.cardId), function(ok) {
                             forgetSheet.working = false
-                            if (ok) forgetSheet.close()
-                        })
+                            if (ok) forgetSheet.close(); else forgetError.take(root.backend, "The wallet was not forgotten.")
+                        }, function() { forgetSheet.working = false; forgetError.lost() })
                     }
                 }
             }

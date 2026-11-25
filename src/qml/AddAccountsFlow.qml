@@ -3,6 +3,7 @@ import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import Logos.Controls
 import Logos.Theme
+import "errors.js" as Errors
 
 // Add accounts, as a guided one-step-per-screen flow matching the administration CardFlow: a title
 // line that keeps the wallet + connection in view, a centred "Step N of 4" header, one concern per
@@ -66,6 +67,12 @@ LogosDialog {
     readonly property bool taprootOk: flow.shell || (flow.card && flow.card.taproot)
     readonly property bool canPreview: flow.ready && flow.connected && !flow.needsPairing && !flow.working
                                        && flow.asked === "" && (flow.shell || pinDots.valid)
+    // Why the step's button is off, once the person has typed something it can't take.
+    readonly property string hint: flow.phase !== "input" ? ""
+        : flow.step === 0 && !firstIndex.textInput.acceptableInput ? "Type the first index as a whole number, 0 or more."
+        : flow.step === 1 && !flow.shell && !flow.needsPairing && pinDots.value.length > 0 && !pinDots.valid
+            ? "Type all " + pinDots.count + " digits of the PIN."
+        : ""
     readonly property var stepTitles: ["Choose accounts", "Authorise", "Select accounts", "Name accounts"]
     readonly property var stepDescs: [
         "Pick the account type and where to start. Only public information leaves the device.",
@@ -126,12 +133,22 @@ LogosDialog {
         flow.phase = "working"
         logos.watch(flow.backend.addAccounts(flow.walletId, flow.route(flow.connection), JSON.stringify(request), secret), function (ok) {
             // The real outcome arrives on the exporting state; a false here is a dispatch failure.
-            if (!ok && flow.asked === what) { flow.asked = ""; flow.notice = "The device did not answer."; flow.phase = "input" }
+            if (!ok && flow.asked === what) {
+                flow.asked = ""; flow.phase = "input"
+                flow.notice = Errors.human(flow.backend ? flow.backend.lastError : "") || "The device did not answer."
+            }
+        }, function () {
+            if (flow.asked === what) { flow.asked = ""; flow.notice = "The Keycard app did not answer. Try again."; flow.phase = "input" }
         })
     }
     function doPair(secret) {
         flow.pairing = true
-        logos.watch(flow.backend.pair(flow.reader, secret), function (ok) { flow.pairing = false; pairField.text = "" })
+        flow.notice = ""
+        logos.watch(flow.backend.pair(flow.reader, secret), function (ok) {
+            flow.pairing = false; pairField.text = ""
+            // Refused: say why here, as the backend gave it then; the page behind does not show it.
+            if (!ok) flow.notice = Errors.human(flow.backend ? flow.backend.lastError : "") || "The card was not paired."
+        }, function () { flow.pairing = false; pairField.text = ""; flow.notice = "The Keycard app did not answer. Try again." })
     }
     function clearRows() { flow.rows = []; flow.selected = [] }
 
@@ -140,7 +157,7 @@ LogosDialog {
         var st = (flow.exporting && flow.exporting.state) || ""
         if (st === "failed") {
             var wasF = flow.asked; flow.asked = ""
-            flow.notice = (flow.exporting && flow.exporting.error) || "The device did not answer."
+            flow.notice = Errors.human(flow.exporting && flow.exporting.error) || "The device did not answer."
             flow.phase = "input"
             // preview fail → back to authorise (a Shell has none: back to choose); commit fail → back to name
             flow.step = wasF === "preview" ? (flow.shell ? 0 : 1) : 3
@@ -164,7 +181,7 @@ LogosDialog {
         flow.coinIdx = 0; flow.scriptIdx = 0; flow.networkIdx = 0; flow.firstIndexText = "0"
         pinDots.clear(); pairField.text = ""
     }
-    onClosed: { pinDots.clear(); pairField.text = ""; flow.rows = []; flow.selected = []; flow.names = ({}); flow.asked = ""; flow.finished() }
+    onClosed: { pinDots.clear(); pairField.text = ""; flow.rows = []; flow.selected = []; flow.names = ({}); flow.asked = ""; flow.notice = ""; flow.finished() }
     // If the active card is swapped while the dialog is open, drop the entered secret and any read page.
     onCardChanged: if (flow.opened) { pinDots.clear(); pairField.text = ""; flow.clearRows() }
 
@@ -443,9 +460,11 @@ LogosDialog {
                     LogosText {
                         anchors.fill: parent
                         horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignTop
+                        objectName: "addAccountsNotice"
                         wrapMode: Text.WordWrap; elide: Text.ElideRight
-                        text: flow.notice
-                        color: Theme.palette.error; font.pixelSize: Theme.typography.secondaryText
+                        textFormat: Text.PlainText
+                        text: flow.notice || flow.hint
+                        color: flow.notice ? Theme.palette.error : Theme.palette.textSecondary; font.pixelSize: Theme.typography.secondaryText
                     }
                 }
             }
