@@ -459,6 +459,8 @@ Item {
                     editIcon: root.iconEdit
                     trashIcon: root.iconTrash
                     lockIcon: root.iconLock
+                    // Add accounts as the card's full-width primary button (the kit's opt-in).
+                    primaryAdd: true
                     emptyText: root.hasAccounts(g) ? "No accounts yet." : ""
                     lines: root.cardBlockedFor(g)
                         ? ["This card is blocked. Open Card administration to unblock or reset it."]
