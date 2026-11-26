@@ -82,11 +82,11 @@
         "logos-signer-interface": "logos-signer-interface"
       },
       "locked": {
-        "lastModified": 1795211771,
-        "narHash": "sha256-fzZ398D68mgARfBEV/Y4w6RgwmLsWFqy7iuvSFMQmI4=",
+        "lastModified": 1795460007,
+        "narHash": "sha256-wDKG7ChR1GFUUPBfD6XhpVp7yYYM0XxNKrgDKrG8QxQ=",
         "owner": "logos-co",
         "repo": "logos-keycard-module",
-        "rev": "89561ae0caa75274abc460f60b9013c65fe0ce13",
+        "rev": "b7d385c4418ed23795316af297afd9f964d62e9b",
         "type": "github"
       },
       "original": {
