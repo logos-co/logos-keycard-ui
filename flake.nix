@@ -11,6 +11,13 @@
       url = "github:logos-co/logos-keycard-module";
       inputs.logos-module-builder.follows = "logos-module-builder";
     };
+    # metadata.json depends on signer_manager_module; the builder needs its LIDL.
+    signer_manager_module = {
+      url = "github:logos-co/logos-signer-manager-module";
+      inputs.logos-module-builder.follows = "logos-module-builder";
+      inputs.keycard_module.follows = "keycard_module";
+      inputs.keycard_shell_module.follows = "keycard_shell_module";
+    };
   };
 
   # mkLogosQmlModule assembles the QML into the package, which the .lgx step needs.
