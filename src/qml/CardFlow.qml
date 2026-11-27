@@ -171,6 +171,11 @@ LogosDialog {
         var weak = ["000000","111111","222222","333333","444444","555555","666666","777777","888888","999999","123456","654321","012345","121212","123123"]
         return weak.indexOf(s) >= 0
     }
+    // Change step with the PIN row emptied first. The row is one input shared by every step and its
+    // length follows the step (12 for a PUK, 6 for a PIN): left filled, a 12-digit PUK would be cut
+    // to its first six digits when the next step is a PIN, read as a complete PIN, and advance on
+    // its own.
+    function goTo(i) { pinDots.clear(); flow.idx = i }
     function enterStep(err) {
         flow.noteMsg = ""
         if (flow.isPin) { pinDots.value = flow.step ? (flow.vals[flow.step.key] || "") : ""; pinDots.error = !!err; pinDots.forceActive() }
@@ -185,7 +190,7 @@ LogosDialog {
         else if (flow.isCheck) { checkBox.checked = flow.step ? (flow.vals[flow.step.key] === true) : false }
     }
     function begin() {
-        flow.idx = 0; flow.vals = ({}); flow.phase = "input"; flow.errorMsg = ""; flow.noteMsg = ""
+        flow.goTo(0); flow.vals = ({}); flow.phase = "input"; flow.errorMsg = ""; flow.noteMsg = ""
         flow.attempts = -1; flow.pinBlocked = false; flow.pukBlocked = false; flow.resultText = ""
         flow.seedWords = ""; flow.revealed = false; flow.confirmPos = []
         enterStep(false)
@@ -227,12 +232,12 @@ LogosDialog {
         }
         flow.errorMsg = ""
         if (flow.lastStep) { flow.submit(); return }
-        flow.idx = flow.idx + 1
+        flow.goTo(flow.idx + 1)
         enterStep(false)
     }
     function goBack() {
         if (flow.idx === 0) { flow.close(); return }
-        flow.idx = flow.idx - 1; flow.errorMsg = ""
+        flow.goTo(flow.idx - 1); flow.errorMsg = ""
         enterStep(false)
     }
     function submit() {
@@ -273,7 +278,7 @@ LogosDialog {
         }, function () { cb(-1) })
     }
     function goToSecretStep() {
-        for (var i = 0; i < flow.steps.length; i++) if (flow.steps[i].key === flow.plan.secret) { flow.idx = i; break }
+        for (var i = 0; i < flow.steps.length; i++) if (flow.steps[i].key === flow.plan.secret) { flow.goTo(i); break }
         var d = flow.vals; d[flow.plan.secret] = ""; flow.vals = d
         flow.phase = "input"
         enterStep(true)
@@ -373,6 +378,7 @@ LogosDialog {
                 // PIN / PUK dots.
                 PinDots {
                     id: pinDots
+                    objectName: "cardFlowPin"
                     visible: flow.isPin
                     Layout.alignment: Qt.AlignHCenter
                     Layout.topMargin: Theme.spacing.large
