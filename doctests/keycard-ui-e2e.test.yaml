@@ -52,11 +52,18 @@ sections:
           nix build 'github:logos-co/logos-keycard-shell-module/2921176f9c7448513a3444950bbcc4be22266350#install' --no-write-lock-file -o result-shell
           cp -rL result-shell/modules/* tree/modules/
           cp -rL result-module/modules/* tree/modules/
+          # keycard_ui depends on signer_manager_module, which depends on keystore_module.
+          nix build 'github:logos-co/logos-signer-manager-module/152c96d185f4b31d11485e5b0dca4b6266615e57#install' --no-write-lock-file -o result-manager
+          nix build 'github:logos-co/logos-evm-keystore-module/e83a899a1718ed52e3173dc85d06b15b9c68f41a#install' --no-write-lock-file -o result-keystore
+          cp -rL result-manager/modules/* tree/modules/
+          cp -rL result-keystore/modules/* tree/modules/
           chmod -R u+w tree
           ls tree/modules result-ui/plugins
         expect_contains:
           - "keycard_module"
           - "keycard_ui"
+          - "signer_manager_module"
+          - "keystore_module"
 
   - title: "A simulated Keycard"
     step: true
