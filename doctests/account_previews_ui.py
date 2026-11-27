@@ -34,8 +34,8 @@ def pick(first, picks, pin=True):
  """Show five accounts from `first`, tick the rows in `picks` ([(row, name)]), name them, add them."""
  setp('firstIndex','text',str(first))
  click('addFlowContinue')
- # A card asks for its PIN: the sixth digit reads the accounts. A Shell reads them on Continue.
- if pin: setp('addPinDots','value','123456')
+ # A card asks for its PIN, then Show accounts reads them. A Shell reads them on Continue.
+ if pin: setp('addPinDots','value','123456');click('addFlowShow')
  time.sleep(.5);wait('exporting.state === "done" && !working')
  for row,_ in picks: click('selectAccount_'+str(row))
  click('addFlowToNames')
@@ -43,7 +43,7 @@ def pick(first, picks, pin=True):
  click('addFlowKeep');wait('phase === "success"','addAccountsDialog')
  click('addFlowDone');wait('!opened','addAccountsDialog')
 def rename_account(wallet, label):
- click('wallet%d_Account_0_Action_rename'%wallet)
+ click('wallet%d_Account_0_Edit'%wallet)
  setp('accountName','text',label);click('saveAccountName')
  wait('!opened','renameAccountDialog')
 
