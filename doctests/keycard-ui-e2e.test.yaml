@@ -79,26 +79,8 @@ sections:
           tests:
             - name: "Wallet home"
               action: wait_for
-              texts: ["Wallets and card administration", "No accounts yet."]
+              texts: ["Wallets and card administration", "Unknown wallet"]
               timeout: 60000
-            - name: "Rename the wallet"
-              action: click_object
-              find_value: "wallet0_Action_rename"
-            - name: "Name the wallet"
-              action: set_text
-              find_by: "objectName"
-              find_value: "walletName"
-              value: "Travel card"
-            - name: "Save its name"
-              action: click_object
-              find_value: "saveWalletName"
-            - name: "The dialog closes once saved"
-              action: expect_property
-              find_by: "objectName"
-              find_value: "renameWalletDialog"
-              property: "visible"
-              value: false
-              timeout: 10000
             - name: "Add accounts"
               action: click_object
               find_value: "wallet0_Action_add"
@@ -132,10 +114,38 @@ sections:
             - name: "Add both, without the PIN again"
               action: click_object
               find_value: "addFlowKeep"
+            - name: "Both accounts are added"
+              action: expect_property
+              find_by: "objectName"
+              find_value: "addFlowDone"
+              property: "visible"
+              value: true
+              timeout: 60000
+            - name: "Done"
+              action: click_object
+              find_value: "addFlowDone"
             - name: "Both accounts are in the wallet"
               action: wait_for
               texts: ["Spending", "m/44'/60'/0'/0/2"]
               timeout: 60000
+            - name: "Now it has accounts, rename the wallet"
+              action: click_object
+              find_value: "wallet0_Action_rename"
+            - name: "Name the wallet"
+              action: set_text
+              find_by: "objectName"
+              find_value: "walletName"
+              value: "Travel card"
+            - name: "Save its name"
+              action: click_object
+              find_value: "saveWalletName"
+            - name: "The dialog closes once saved"
+              action: expect_property
+              find_by: "objectName"
+              find_value: "renameWalletDialog"
+              property: "visible"
+              value: false
+              timeout: 10000
 
   - title: "A card Keycard didn't sign"
     step: true
