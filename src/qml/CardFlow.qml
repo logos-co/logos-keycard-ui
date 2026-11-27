@@ -309,7 +309,7 @@ LogosDialog {
         // or pairing password with WrongSecret; a blocked PIN or PUK has no code of its own yet
         // (it comes back as Unavailable), so a PIN-counted flow reads the card's attempts, the
         // contract's numbers, and 0 means blocked. Workaround until keycard_module gives blocked a
-        // code (keycard-module issue, to file).
+        // code (logos-co/logos-keycard-module#16).
         var wrongSecret = r.code === "WrongSecret"
         // PIN-counted flows: wrong PIN / block routing with attempts.
         if (flow.plan.retry && (wrongSecret || r.code === "Unavailable")) {
