@@ -79,7 +79,7 @@ sections:
           tests:
             - name: "Wallet home"
               action: wait_for
-              texts: ["Keycard wallets", "No accounts yet."]
+              texts: ["Wallets and card administration", "No accounts yet."]
               timeout: 60000
             - name: "Rename the wallet"
               action: click_object
@@ -99,17 +99,18 @@ sections:
               property: "visible"
               value: false
               timeout: 10000
-            - name: "Choose accounts"
+            - name: "Add accounts"
               action: click_object
               find_value: "wallet0_Action_add"
-            - name: "Authorize the public export"
-              action: set_text
-              find_by: "objectName"
-              find_value: "offerPin"
-              value: "123456"
-            - name: "Show the first five Ethereum accounts"
+            - name: "Ethereum, from index 0: continue"
               action: click_object
-              find_value: "showAccounts"
+              find_value: "addFlowContinue"
+            - name: "Authorise the public export with the card's PIN (the sixth digit reads the accounts)"
+              action: set_property
+              find_by: "objectName"
+              find_value: "addPinDots"
+              property: "value"
+              value: "123456"
             - name: "Their indexes"
               action: wait_for
               texts: ["Index 0", "Index 4", "m/44'/60'/0'/0/4"]
@@ -122,7 +123,7 @@ sections:
               find_value: "selectAccount_2"
             - name: "Name them"
               action: click_object
-              find_value: "nameAccounts"
+              find_value: "addFlowToNames"
             - name: "Name only the first"
               action: set_text
               find_by: "objectName"
@@ -130,7 +131,7 @@ sections:
               value: "Spending"
             - name: "Add both, without the PIN again"
               action: click_object
-              find_value: "keepAccounts"
+              find_value: "addFlowKeep"
             - name: "Both accounts are in the wallet"
               action: wait_for
               texts: ["Spending", "m/44'/60'/0'/0/2"]
@@ -205,6 +206,22 @@ sections:
               value: "Trusted: this card is used though Keycard didn't sign it."
               timeout: 10000
               screenshot: "keycard-ui-trusted.png"
+            - name: "Open the Administration area"
+              action: click_object
+              find_by: "objectName"
+              find_value: "areaAdministration"
+            - name: "Administration area shows the inline panel"
+              action: expect_property
+              find_by: "objectName"
+              find_value: "cardAdministrationPanel"
+              property: "visible"
+              value: true
+              timeout: 10000
+              screenshot: "keycard-ui-admin.png"
+            - name: "Back to Wallets"
+              action: click_object
+              find_by: "objectName"
+              find_value: "areaWallets"
             - name: "Nothing is left to review"
               action: expect_property
               find_by: "objectName"

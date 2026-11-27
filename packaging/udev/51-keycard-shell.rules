@@ -1,0 +1,7 @@
+# Keycard Shell (Status Research & Development) - VID:PID 1209:21f7
+# Grants the local desktop user access to the device's HID interface so
+# Logos Basecamp (keycard_shell_module) can open /dev/hidraw* for it.
+# Without this the node is root-only (crw------- root root) and the app
+# fails with: hidapi error: failed to open device ... Permission denied (os error 13)
+KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1209", ATTRS{idProduct}=="21f7", MODE="0660", GROUP="plugdev", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1209", ATTRS{idProduct}=="21f7", MODE="0660", GROUP="plugdev", TAG+="uaccess"
