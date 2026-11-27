@@ -30,12 +30,16 @@ LogosDialog {
     property var connections: []
     property bool shell: false
     property var card: null
+    // The card's id. `card` is re-parsed on every cards() refresh, so a swap is read from this.
+    property string cardKey: ""
     property string reader: ""
     property bool needsPairing: false
     property bool connected: false
     property bool working: false
     property var exporting: ({})
     signal finished()
+    // The card was asked for its PIN and refused: its retry counts may have changed.
+    signal cardRefused()
 
     // 0 choose · 1 authorise · 2 select · 3 name
     property int step: 0
@@ -159,6 +163,8 @@ LogosDialog {
             var wasF = flow.asked; flow.asked = ""
             flow.notice = Errors.human(flow.exporting && flow.exporting.error) || "The device did not answer."
             flow.phase = "input"
+            // A failed preview drops the PIN, so one more click can't resend a wrong one.
+            if (wasF === "preview" && !flow.shell) { pinDots.clear(); flow.cardRefused() }
             // preview fail → back to authorise (a Shell has none: back to choose); commit fail → back to name
             flow.step = wasF === "preview" ? (flow.shell ? 0 : 1) : 3
             return
@@ -192,7 +198,7 @@ LogosDialog {
     onPhaseChanged: focusPin()
     onNeedsPairingChanged: focusPin()
     // If the active card is swapped while the dialog is open, drop the entered secret and any read page.
-    onCardChanged: if (flow.opened) { pinDots.clear(); pairField.text = ""; flow.clearRows() }
+    onCardKeyChanged: if (flow.opened) { pinDots.clear(); pairField.text = ""; flow.clearRows() }
 
     contentItem: ColumnLayout {
         spacing: Theme.spacing.medium

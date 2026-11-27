@@ -33,6 +33,9 @@ FocusScope {
     implicitHeight: Math.max(dots.implicitHeight, 44)
 
     function clear() { input.text = "" }
+    // Put back a value already entered (Back to a filled step) without firing `entered`.
+    property bool restoring: false
+    function restore(v) { root.restoring = true; input.text = v; root.restoring = false }
     function forceActive() { input.forceActiveFocus() }
 
     Accessible.role: Accessible.EditableText
@@ -81,7 +84,7 @@ FocusScope {
         onTextChanged: {
             if (root.error) root.error = false
             root.edited()
-            if (text.length === root.count) root.entered(text)
+            if (text.length === root.count && !root.restoring) root.entered(text)
         }
     }
 }
