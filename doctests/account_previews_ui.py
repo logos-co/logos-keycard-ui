@@ -33,14 +33,17 @@ def close(name):evaluate('close()',name)
 def pick(first, picks, pin=True):
  """Show five accounts from `first`, tick the rows in `picks` ([(row, name)]), name them, add them."""
  setp('firstIndex','text',str(first))
- if pin: setp('offerPin','text','123456')
- click('showAccounts');time.sleep(.5);wait('exporting.state === "done" && !working')
+ click('addFlowContinue')
+ # A card asks for its PIN, then Show accounts reads them. A Shell reads them on Continue.
+ if pin: setp('addPinDots','value','123456');click('addFlowShow')
+ time.sleep(.5);wait('exporting.state === "done" && !working')
  for row,_ in picks: click('selectAccount_'+str(row))
- click('nameAccounts')
+ click('addFlowToNames')
  for n,(_,name) in enumerate(picks): setp('addAccountName_'+str(n),'text',name)
- click('keepAccounts');wait('!opened','addAccountsDialog')
+ click('addFlowKeep');wait('phase === "success"','addAccountsDialog')
+ click('addFlowDone');wait('!opened','addAccountsDialog')
 def rename_account(wallet, label):
- click('wallet%d_Account_0_Action_rename'%wallet)
+ click('wallet%d_Account_0_Edit'%wallet)
  setp('accountName','text',label);click('saveAccountName')
  wait('!opened','renameAccountDialog')
 
