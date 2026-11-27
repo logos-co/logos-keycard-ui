@@ -66,13 +66,17 @@ ColumnLayout {
         if (!selected) { onCardName = ""; localPinRetries = -1; localPukRetries = -1; localRead = false; return }
         if (!again) { onCardName = "Checking…"; localPinRetries = -1; localPukRetries = -1; localRead = false }
         var p = {action:"status", reader:selected.reader, cardId:selected.adminId, keyUid:selected.keyUid || ""}
+        var asked = selected.adminId
+        // A reply for a card no longer selected is dropped, so it can't show another card's tries.
+        var current = function () { return !!selected && selected.adminId === asked }
         logos.watch(backend.administer(JSON.stringify(p)), function(raw) {
+            if (!current()) return
             var r; try { r = JSON.parse(raw) } catch(e) { r = {} }
             onCardName = (r && r.ok && r.cardName) ? r.cardName : ""
             localPinRetries = (r && r.ok && typeof r.pinRetries === "number") ? r.pinRetries : -1
             localPukRetries = (r && r.ok && typeof r.pukRetries === "number") ? r.pukRetries : -1
             localRead = true
-        }, function() { if (!again) onCardName = ""; localRead = true })
+        }, function() { if (!current()) return; if (!again) onCardName = ""; localRead = true })
     }
     // Blocked state, from the authoritative retry counts (insert-time cache, or this panel's read).
     readonly property bool blockedPin: cardPinRetries === 0

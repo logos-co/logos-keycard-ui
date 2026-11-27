@@ -226,8 +226,11 @@ Item {
         if (cardNamePending[k] || (!again && cardNameCache.hasOwnProperty(k))) return
         cardNamePending[k] = true
         var p = {action: "status", reader: card.reader, cardId: card.adminId, keyUid: card.keyUid || ""}
+        // A card taken out while its read was in flight stores nothing, so it is read again when put back.
+        var present = function () { return root.cards.some(function(c) { return c && c.adminId === k }) }
         logos.watch(backend.administer(JSON.stringify(p)), function(raw) {
             delete cardNamePending[k]
+            if (!present()) return
             var r; try { r = JSON.parse(raw) } catch(e) { r = {} }
             var c = cardNameCache; c[k] = (r && r.ok && r.cardName) ? r.cardName : ""; cardNameCache = c
             var s = cardStateCache
@@ -238,7 +241,7 @@ Item {
             // Lost: settle it as unknown, so the card is not left "Reading card…". A re-read keeps
             // what it had.
             delete cardNamePending[k]
-            if (again && cardStateCache.hasOwnProperty(k)) return
+            if (!present() || (again && cardStateCache.hasOwnProperty(k))) return
             var c = cardNameCache; c[k] = ""; cardNameCache = c
             var s = cardStateCache; s[k] = { pin: -1, puk: -1 }; cardStateCache = s
         })
@@ -563,11 +566,13 @@ Item {
         connections: root.connections
         shell: root.shell
         card: root.card
+        cardKey: root.card ? root.cardId(root.card) : ""
         reader: root.reader
         needsPairing: root.needsPairing
         connected: root.connected
         working: root.working
         exporting: root.exporting
+        onCardRefused: if (root.card && root.card.adminId) root.rereadCard(root.card.adminId)
     }
     LogosDialog {
         id: identifySheet; objectName: "identifyWalletDialog"; title: "Identify wallet"

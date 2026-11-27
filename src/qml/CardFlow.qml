@@ -157,7 +157,7 @@ LogosDialog {
     onOpened: enterStep(false)
 
     function shortId(id) { var s = (id || "").split(":").pop(); return s.length > 16 ? s.slice(0,8) + "…" + s.slice(-8) : s }
-    function clearSecrets() { flow.vals = ({}); pinDots.clear(); txt.text = ""; phraseGrid.clear(); flow.seedWords = ""; flow.confirmPos = [] }
+    function clearSecrets() { flow.vals = ({}); pinDots.clear(); txt.text = ""; phraseGrid.clear(); flow.seedWords = ""; flow.confirmPos = []; cw0.text = ""; cw1.text = ""; cw2.text = "" }
     function startConfirm() {
         var n = flow.seedList.length, picks = []
         while (picks.length < 3 && picks.length < n) { var r = Math.floor(Math.random() * n); if (picks.indexOf(r) < 0) picks.push(r) }
@@ -178,7 +178,7 @@ LogosDialog {
     function goTo(i) { pinDots.clear(); flow.idx = i }
     function enterStep(err) {
         flow.noteMsg = ""
-        if (flow.isPin) { pinDots.value = flow.step ? (flow.vals[flow.step.key] || "") : ""; pinDots.error = !!err; pinDots.forceActive() }
+        if (flow.isPin) { pinDots.restore(flow.step ? (flow.vals[flow.step.key] || "") : ""); pinDots.error = !!err; pinDots.forceActive() }
         else if (flow.isText) {
             txt.textInput.maximumLength = (flow.step && flow.step.maxLen) ? flow.step.maxLen : 128
             txt.text = flow.step ? (flow.vals[flow.step.key] || "") : ""
