@@ -182,6 +182,15 @@ LogosDialog {
         pinDots.clear(); pairField.text = ""
     }
     onClosed: { pinDots.clear(); pairField.text = ""; flow.rows = []; flow.selected = []; flow.names = ({}); flow.asked = ""; flow.notice = ""; flow.finished() }
+    // On the PIN step the PIN row takes the keyboard, as CardFlow's steps do: reaching it, and coming
+    // back to it after a wrong PIN, so typing works without clicking the circles first.
+    function focusPin() {
+        if (flow.opened && flow.step === 1 && flow.phase === "input" && !flow.shell && !flow.needsPairing)
+            Qt.callLater(pinDots.forceActive)
+    }
+    onStepChanged: focusPin()
+    onPhaseChanged: focusPin()
+    onNeedsPairingChanged: focusPin()
     // If the active card is swapped while the dialog is open, drop the entered secret and any read page.
     onCardChanged: if (flow.opened) { pinDots.clear(); pairField.text = ""; flow.clearRows() }
 
