@@ -47,6 +47,7 @@ Item {
     readonly property var connection: connections.find(function(c) { return root.route(c) === root.selectedConnectionId }) || connections[0] || null
     readonly property bool shell: !!connection && connection.transport === "shell"
     readonly property var card: shell || !connection ? null : cards.find(function(c) { return cardId(c) === root.connection.id }) || null
+    readonly property var readers: ready ? j(backend.readersJson, "[]") : []
     readonly property string reader: card ? card.reader : ""
     readonly property bool needsPairing: card !== null && card.secureChannel === 1 && !card.paired
     readonly property bool connected: !!connection && connection.connected
@@ -131,7 +132,10 @@ Item {
             }
             LogosText {
                 Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.palette.textSecondary
-                text: "Connect a Keycard reader or a Keycard Shell over USB. Your keys stay on the card."
+                // keycard_module.readers() lists empty readers too, so say which of the three it is.
+                text: root.readers.length === 0 ? "Connect a Keycard reader or a Keycard Shell over USB. Your keys stay on the card."
+                    : root.readers.some(function(r) { return r.card }) ? "Keycard in the reader. Your keys stay on the card."
+                    : "Reader connected, no card in it. Insert a Keycard."
             }
             LogosText { visible: root.ready && root.wallets.length === 0; text: "Connect a Keycard to add your first wallet." }
             LogosButton { objectName: "reviewUnverified"; visible: root.unsigned.length > 0; text: "Review unverified Keycard…"; onClicked: trustSheet.open() }
@@ -617,6 +621,11 @@ Item {
         property bool working: false
         readonly property var group: root.wallets.find(function(g) { return g.id === forgetSheet.cardId })
         readonly property bool connected: !!group && (group.connections || []).some(function(c) { return c.transport !== "shell" && c.connected })
+        // keycard_module forgets a seed wallet with its card inserted (nothing on the card changes, and
+        // the card shows again as one not added yet). A physical card id still needs the card out,
+        // since an inserted card would be remembered again at once.
+        readonly property bool seedWallet: cardId.indexOf("seed:") === 0
+        readonly property bool needsCardOut: connected && !seedWallet
         anchors.centerIn: parent
         width: Math.min(parent.width - 40, 580)
         onOpened: working = false
@@ -637,8 +646,15 @@ Item {
             LogosText {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
-                visible: forgetSheet.connected
+                visible: forgetSheet.needsCardOut
                 text: "Remove this Keycard from its reader before forgetting it."
+            }
+            LogosText {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                visible: forgetSheet.connected && forgetSheet.seedWallet
+                color: Theme.palette.textSecondary
+                text: "The card can stay in the reader. Afterwards it shows as a card not added yet."
             }
             LogosText {
                 Layout.fillWidth: true
@@ -658,7 +674,7 @@ Item {
                 LogosButton {
                     objectName: "confirmForgetSavedCard"
                     text: forgetSheet.working ? "Forgetting…" : "Forget Keycard"
-                    enabled: !!forgetSheet.group && !forgetSheet.connected && !forgetSheet.working
+                    enabled: !!forgetSheet.group && !forgetSheet.needsCardOut && !forgetSheet.working
                     onClicked: {
                         forgetSheet.working = true
                         logos.watch(root.backend.forgetSavedCard(forgetSheet.cardId), function(ok) {
