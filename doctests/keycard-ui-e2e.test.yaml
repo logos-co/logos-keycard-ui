@@ -87,12 +87,15 @@ sections:
             - name: "Ethereum, from index 0: continue"
               action: click_object
               find_value: "addFlowContinue"
-            - name: "Authorise the public export with the card's PIN (the sixth digit reads the accounts)"
+            - name: "Authorise the public export with the card's PIN"
               action: set_property
               find_by: "objectName"
               find_value: "addPinDots"
               property: "value"
               value: "123456"
+            - name: "Show the first five Ethereum accounts"
+              action: click_object
+              find_value: "addFlowShow"
             - name: "Their indexes"
               action: wait_for
               texts: ["Index 0", "Index 4", "m/44'/60'/0'/0/4"]
@@ -130,7 +133,7 @@ sections:
               timeout: 60000
             - name: "Now it has accounts, rename the wallet"
               action: click_object
-              find_value: "wallet0_Action_rename"
+              find_value: "wallet0_Edit"
             - name: "Name the wallet"
               action: set_text
               find_by: "objectName"
