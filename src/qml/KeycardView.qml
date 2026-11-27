@@ -114,10 +114,24 @@ Item {
     function openAdd(g) { selectWallet(g); addSheet.open() }
     function grouped(hex) { return (hex || "").replace(/(.{8})/g, "$1 ").trim() }
 
-    CardAdministration { id: adminSheet; backend: root.backend; cards: root.cards }
+    // Two areas: the wallets, and administration of the card in a reader.
+    LogosTabBar {
+        id: areaTabs; objectName: "areaTabs"
+        anchors { top: parent.top; left: parent.left; right: parent.right; margins: Theme.spacing.medium }
+        LogosTabButton { objectName: "areaWallets"; text: "Wallets"; font.pixelSize: Theme.typography.secondaryText }
+        LogosTabButton { objectName: "areaAdministration"; text: "Administration"; enabled: root.ready; font.pixelSize: Theme.typography.secondaryText }
+    }
+    CardAdministration {
+        id: adminSheet; backend: root.backend; cards: root.cards; cardGroups: root.cardGroups
+        active: areaTabs.currentIndex === 1; visible: areaTabs.currentIndex === 1
+        anchors { top: areaTabs.bottom; left: parent.left; right: parent.right; bottom: parent.bottom
+                  leftMargin: Theme.spacing.medium; rightMargin: Theme.spacing.medium; bottomMargin: Theme.spacing.medium; topMargin: Theme.spacing.large }
+    }
     LogosScrollView {
         id: scroll
-        anchors.fill: parent; anchors.margins: Theme.spacing.medium
+        visible: areaTabs.currentIndex === 0
+        anchors { top: areaTabs.bottom; left: parent.left; right: parent.right; bottom: parent.bottom
+                  leftMargin: Theme.spacing.medium; rightMargin: Theme.spacing.medium; bottomMargin: Theme.spacing.medium; topMargin: Theme.spacing.small }
         contentWidth: availableWidth
         ColumnLayout {
             width: scroll.availableWidth; spacing: Theme.spacing.medium
@@ -126,7 +140,7 @@ Item {
                 LogosText { text: "Keycard wallets"; font.pixelSize: 22 }
                 LogosInfoButton { objectName: "keycardWalletInfo"; title: "One wallet per seed"; Accessible.name: "Help: One wallet per seed"; text: "Wallets are identified by a hash of the full master public key. Cards holding the same seed share one wallet, across readers and USB Shells. A different recovery passphrase creates a different wallet. Identify an older Shell wallet once and confirm its public-key requests to link its saved accounts. Previous wallet and account names are retained. A Shell shows on a wallet once it has verified that wallet's seed, or when it was used with that wallet before. The first use of each USB connection asks you to confirm the master public key. Subsequent signatures reuse that verification until the Shell disconnects or the app restarts. Use Verify wallet… on the wallet to request a fresh check at any time. Every returned signature is checked against the selected account. If the card has a different seed, the result is rejected; insert the correct card and retry. Names are saved on this computer." }
                 Item { Layout.fillWidth: true }
-                LogosButton { objectName: "cardAdministration"; text: "Card administration…"; enabled: root.ready && !root.working; onClicked: adminSheet.open() }
+                LogosButton { objectName: "cardAdministration"; text: "Card administration…"; enabled: root.ready && !root.working; onClicked: areaTabs.currentIndex = 1 }
                 LogosButton { objectName: "connectShell"; text: "Open wallet via USB…"; visible: root.shellDevices.length > 0; enabled: !root.working; onClicked: shellSheet.open() }
                 LogosButton { text: "Refresh"; enabled: root.ready && !root.working; onClicked: root.backend.refresh() }
             }
@@ -169,7 +183,7 @@ Item {
                     }
                     onStripAction: function (i, id) {
                         var strip = group.strips[i]
-                        if (id === "admin") { adminSheet.preferredCard = strip.card.adminId; adminSheet.open() }
+                        if (id === "admin") { adminSheet.preferredCard = strip.card.adminId; areaTabs.currentIndex = 1 }
                         else if (id === "stoptrust") logos.watch(root.backend.forgetCard(strip.card.identity), function(ok) {})
                         else if (id === "identify") { root.selectWallet(group.g); identifySheet.open() }
                     }
